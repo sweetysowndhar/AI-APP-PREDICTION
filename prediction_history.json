@@ -1,42 +1,86 @@
 [
     {
+        "symbol": "SBIN",
+        "signal": "NO TRADE (Low Confidence)",
+        "confidence": 0.2694,
+        "price": 961.7,
+        "sl": 983.0706195537861,
+        "target": 918.958760892428,
+        "timestamp": "2026-05-25 10:39:56",
+        "catalyst": "Regulatory Headwinds: \"Fed officials see rate hike ahead if inflation stays elevated, minutes show...\"",
+        "correct": null
+    },
+    {
+        "symbol": "SBIN",
+        "signal": "NO TRADE (Low Confidence)",
+        "confidence": 0.323,
+        "price": 961.3,
+        "sl": 982.6129272460937,
+        "target": 918.6741455078125,
+        "timestamp": "2026-05-25 10:32:47",
+        "catalyst": "Weak Earnings Performance: \"Top Wall Street analysts like these dividend stocks for steady income...\"",
+        "correct": null
+    },
+    {
+        "symbol": "SBIN",
+        "signal": "NO TRADE (Low Confidence)",
+        "confidence": 0.323,
+        "price": 960.7,
+        "sl": 982.0013916015625,
+        "target": 918.097216796875,
+        "timestamp": "2026-05-25 10:27:10",
+        "catalyst": "Weak Earnings Performance: \"Top Wall Street analysts like these dividend stocks for steady income...\"",
+        "correct": null
+    },
+    {
+        "symbol": "SBI",
+        "signal": "NO TRADE (Low Confidence)",
+        "confidence": 0.2582,
+        "price": 962.4,
+        "sl": 984.0129244290865,
+        "target": 919.1741511418269,
+        "timestamp": "2026-05-25 10:06:47",
+        "catalyst": "Positive Regulatory Support: \"Fed officials see rate hike ahead if inflation stays elevated, minutes show...\"",
+        "correct": null
+    },
+    {
         "symbol": "RELIANCE",
         "signal": "STRONG BUY",
         "confidence": 0.89,
-        "price": 2945.50,
-        "sl": 2900.00,
-        "target": 3050.00,
-        "actual_price": 3055.20,
+        "price": 2945.5,
+        "sl": 2900.0,
+        "target": 3050.0,
+        "actual_price": 3055.2,
         "timestamp": "2026-04-29 10:15:22",
         "catalyst": "Institutional Accumulation & Strong Q4 Guidance",
         "correct": true,
-        "status": "TARGET HIT 🎯"
+        "status": "TARGET HIT \u00f0\u0178\u017d\u00af"
     },
     {
         "symbol": "TCS",
         "signal": "BUY",
         "confidence": 0.78,
-        "price": 3850.00,
-        "sl": 3800.00,
-        "target": 3950.00,
-        "actual_price": 3962.10,
+        "price": 3850.0,
+        "sl": 3800.0,
+        "target": 3950.0,
+        "actual_price": 3962.1,
         "timestamp": "2026-04-29 09:30:45",
         "catalyst": "Multi-year Cloud Migration Deal Signature",
         "correct": true,
-        "status": "TARGET HIT 🎯"
+        "status": "TARGET HIT \u00f0\u0178\u017d\u00af"
     },
     {
         "symbol": "INFY",
         "signal": "STRONG SELL",
         "confidence": 0.85,
-        "price": 1420.00,
-        "sl": 1450.00,
-        "target": 1380.00,
-        "actual_price": 1378.50,
+        "price": 1420.0,
+        "sl": 1450.0,
+        "target": 1380.0,
+        "actual_price": 1378.5,
         "timestamp": "2026-04-28 15:45:10",
         "catalyst": "Major Hedge Fund Liquidation Detected",
         "correct": true,
-        "status": "TARGET HIT 🎯"
+        "status": "TARGET HIT \u00f0\u0178\u017d\u00af"
     },
     {
         "symbol": "TATASILVER",

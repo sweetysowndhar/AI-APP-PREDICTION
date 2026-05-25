@@ -41,7 +41,8 @@ STOCK_MAP = {
     'RELIANCE': 'RELIANCE.NS', 'TCS': 'TCS.NS', 'INFY': 'INFY.NS',
     'HDFCBANK': 'HDFCBANK.NS', 'HDFC': 'HDFCBANK.NS',
     'ICICIBANK': 'ICICIBANK.NS', 'ICICI': 'ICICIBANK.NS',
-    'SBIN': 'SBIN.NS', 'BHARTIARTL': 'BHARTIARTL.NS',
+    'SBIN': 'SBIN.NS', 'SBI': 'SBIN.NS', 'STATE BANK': 'SBIN.NS', 'STATEBANK': 'SBIN.NS',
+    'BHARTIARTL': 'BHARTIARTL.NS',
     'ITC': 'ITC.NS', 'KOTAKBANK': 'KOTAKBANK.NS',
     'LT': 'LT.NS', 'AXISBANK': 'AXISBANK.NS',
     'WIPRO': 'WIPRO.NS', 'MARUTI': 'MARUTI.NS',
@@ -285,7 +286,7 @@ DASHBOARD_CATEGORIES = {
     '🔵 Tata Group': ['TATASTEEL', 'TATAMOTORS', 'TATAPOWER', 'TATACONSUM', 'TATAELXSI',
                        'TATACOMM', 'TATACHEM', 'TATAINVEST', 'TITAN', 'VOLTAS', 'TRENT', 'RALLIS'],
     '🏢 Adani Group': ['ADANIENT', 'ADANIPORTS', 'ADANIGREEN', 'ADANIPOWER', 'ATGL', 'AWL', 'ACC', 'AMBUJACEM'],
-    '🏦 Public Banks': ['SBIN', 'PNB', 'BANKBARODA', 'CANBK', 'UNIONBANK', 'IOB', 'CENTRALB', 'INDIANB', 'UCOBANK', 'MAHABANK', 'PSB'],
+    '🏦 Public Banks': ['SBIN', 'SBI', 'PNB', 'BANKBARODA', 'CANBK', 'UNIONBANK', 'IOB', 'CENTRALB', 'INDIANB', 'UCOBANK', 'MAHABANK', 'PSB'],
     '🏧 Private Banks': ['HDFCBANK', 'ICICIBANK', 'KOTAKBANK', 'AXISBANK', 'INDUSINDBK',
                           'IDFCFIRSTB', 'FEDERALBNK', 'BANDHANBNK', 'RBLBANK', 'YESBANK', 'AUBANK', 'CUB', 'CSB', 'TMB', 'KARURVYSYA'],
     '💰 NBFC & Finance': ['BAJFINANCE', 'BAJFINSV', 'SHRIRAMFIN', 'CHOLAFIN', 'MUTHOOTFIN',
@@ -336,26 +337,50 @@ WATCHLIST_DEFAULT = ['WIPRO', 'RELIANCE', 'TATASTEEL', 'NIPPON', 'BOSCHLTD', 'VE
                      'IRCTC', 'HAL', 'ZOMATO', 'DLF']
 
 # ── Premium CSS (Groww-inspired) ──────────────────────────────────────────
+# Inject viewport meta tag for proper mobile rendering
+st.markdown('<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">', unsafe_allow_html=True)
+
 st.markdown("""
 <style>
-/* Mobile-Specific Overrides */
-@media (max-width: 768px) {
-    .main-title { font-size: 1.5rem !important; }
-    .ticker-bar { gap: 12px; font-size: 0.75rem; }
-    .stock-card { padding: 0.8rem; }
-    .stock-card .price { font-size: 1rem; }
-    .signal-buy, .signal-sell, .signal-hold { padding: 1rem; font-size: 1rem; }
-    
-    /* Optimize Verdict Cards for Mobile */
-    .verdict-h1 { font-size: 2.2rem !important; margin: 10px 0 !important; }
-    .verdict-desc { font-size: 0.95rem !important; }
-    .verdict-container { padding: 20px !important; border-radius: 15px !important; }
-    
-    /* Ensure forecast boxes stack on mobile */
-    .forecast-container > div { display: block !important; width: 100% !important; margin-bottom: 10px; }
-}
+/* ── MUST BE FIRST: Google Fonts import ── */
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap');
+
 * { font-family: 'Inter', sans-serif; box-sizing: border-box; }
+
+/* ── Mobile-Specific Overrides ── */
+@media (max-width: 768px) {
+    /* Prevent iOS auto-zoom on inputs */
+    input, select, textarea { font-size: 16px !important; }
+
+    .main-title { font-size: 1.4rem !important; padding: 0 8px; }
+    .sub-title { font-size: 0.8rem !important; }
+    .ticker-bar { gap: 12px; font-size: 0.75rem; padding: 6px 10px; }
+    .stock-card { padding: 0.75rem; margin: 0.3rem 0; }
+    .stock-card .price { font-size: 1rem; }
+    .signal-buy, .signal-sell, .signal-hold { padding: 0.9rem; font-size: 1rem; }
+
+    /* Verdict Cards */
+    .verdict-h1 { font-size: 2rem !important; margin: 8px 0 !important; }
+    .verdict-desc { font-size: 0.9rem !important; }
+    .verdict-container { padding: 16px !important; border-radius: 14px !important; }
+
+    /* Forecast boxes stack vertically on mobile */
+    .forecast-container > div { display: block !important; width: 100% !important; margin-bottom: 10px; }
+
+    /* Pattern inset stacks on mobile */
+    .pattern-inset { flex-direction: column; gap: 10px; }
+
+    /* News card wraps properly */
+    .news-card { flex-wrap: wrap; gap: 6px; padding: 0.6rem 0.9rem; }
+    .news-title { font-size: 0.88rem; }
+
+    /* Section head smaller */
+    .section-head { font-size: 0.95rem; margin: 1.2rem 0 0.7rem 0; }
+
+    /* Recent row scrollable */
+    .recent-row { gap: 10px; }
+    .recent-item { min-width: 70px; padding: 6px 10px; }
+}
 
 /* Ticker Bar */
 .ticker-bar {
@@ -373,7 +398,7 @@ st.markdown("""
 .main-title {
     font-size: 2rem; font-weight: 800; text-align: center;
     background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-    -webkit-background-clip: text; -webkit-fill-color: transparent;
+    -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;
     margin-bottom: 0.3rem;
 }
 .sub-title { text-align: center; color: #94a3b8; font-size: 0.9rem; margin-bottom: 1.5rem; }
@@ -635,55 +660,6 @@ def get_price_info(symbol, days=5):
     return {'symbol': symbol, 'mapped': mapped, 'price': cur, 'prev': prev,
             'change': chg, 'pct': pct, 'currency': curr_sym, 'volume': last_vol}
 
-
-def calculate_ut_bot(df, sensitivity=2, period=10):
-    """
-    Implements the UT Bot Alerts logic (ATR-based trailing stop).
-    Returns the dataframe with 'UT_Trail', 'UT_Buy', and 'UT_Sell' columns.
-    """
-    if df is None or len(df) < period + 5:
-        return df
-    
-    # Calculate ATR
-    temp_df = df.copy()
-    high = temp_df['High']
-    low = temp_df['Low']
-    close = temp_df['Close']
-    
-    # TR calculation
-    tr1 = high - low
-    tr2 = (high - close.shift()).abs()
-    tr3 = (low - close.shift()).abs()
-    tr = pd.concat([tr1, tr2, tr3], axis=1).max(axis=1)
-    atr = tr.rolling(period).mean()
-    
-    n_loss = sensitivity * atr
-    
-    trail = np.zeros(len(temp_df))
-    src = close.values
-    
-    # Initialize first trail value to avoid zeros
-    trail[0] = src[0]
-    
-    for i in range(1, len(temp_df)):
-        prev_trail = trail[i-1]
-        if src[i] > prev_trail and src[i-1] > prev_trail:
-            trail[i] = max(prev_trail, src[i] - n_loss.iloc[i])
-        elif src[i] < prev_trail and src[i-1] < prev_trail:
-            trail[i] = min(prev_trail, src[i] + n_loss.iloc[i])
-        elif src[i] > prev_trail:
-            trail[i] = src[i] - n_loss.iloc[i]
-        else:
-            trail[i] = src[i] + n_loss.iloc[i]
-            
-    df = df.copy()
-    df['UT_Trail'] = trail
-    
-    # Generate signals (Confirmed on bar close)
-    df['UT_Buy'] = (df['Close'].shift(1) < df['UT_Trail'].shift(1)) & (df['Close'] > df['UT_Trail'])
-    df['UT_Sell'] = (df['Close'].shift(1) > df['UT_Trail'].shift(1)) & (df['Close'] < df['UT_Trail'])
-    
-    return df
 
 def detect_candle_pattern(df):
     """Detects confirmed candlestick patterns from the last CLOSED candle to avoid live repainting"""
@@ -1420,31 +1396,7 @@ def build_candle_chart(df, symbol):
     ma20 = df['Close'].rolling(20).mean()
     fig.add_trace(go.Scatter(x=df.index, y=ma20, line=dict(color='#667eea', width=1, dash='dot'), name='MA20', opacity=0.6), row=1, col=1)
     
-    # --- UT Bot Alerts Visualization ---
-    if 'UT_Trail' in df.columns:
-        # Trailing Stop Line
-        fig.add_trace(go.Scatter(x=df.index, y=df['UT_Trail'], 
-                                 line=dict(color='#94a3b8', width=1, dash='dot'), 
-                                 name='UT Trail', opacity=0.4), row=1, col=1)
-        
-        # Buy Signals (Triangles below low)
-        buys = df[df['UT_Buy'] == True]
-        if not buys.empty:
-            fig.add_trace(go.Scatter(x=buys.index, y=buys['Low'] * 0.995, 
-                                     mode='markers',
-                                     marker=dict(symbol='triangle-up', size=12, color='#00b386', 
-                                                 line=dict(width=1, color='white')),
-                                     name='UT Buy'), row=1, col=1)
-                                     
-        # Sell Signals (Triangles above high)
-        sells = df[df['UT_Sell'] == True]
-        if not sells.empty:
-            fig.add_trace(go.Scatter(x=sells.index, y=sells['High'] * 1.005, 
-                                     mode='markers',
-                                     marker=dict(symbol='triangle-down', size=12, color='#eb5b3c', 
-                                                 line=dict(width=1, color='white')),
-                                     name='UT Sell'), row=1, col=1)
-    
+
     # Volume
     colors = [UP_COLOR if c >= o else DOWN_COLOR for c, o in zip(df['Close'], df['Open'])]
     fig.add_trace(go.Bar(x=df.index, y=df['Volume'], marker_color=colors, name='Vol', opacity=0.3), row=2, col=1)
@@ -1894,17 +1846,15 @@ def page_explore():
     st.markdown(row_html, unsafe_allow_html=True)
 
     # NEW: Market Pulse
-    st.markdown('<div class="section-head">⚡ Market Pulse (Candlestick & UT Bot Alert)</div>', unsafe_allow_html=True)
+    st.markdown('<div class="section-head">⚡ Market Pulse (Candlestick)</div>', unsafe_allow_html=True)
     pulse_syms = ['RELIANCE', 'TATAMOTORS', 'WIPRO', 'GOLD']
     pulse_cols = st.columns(len(pulse_syms))
     for i, psym in enumerate(pulse_syms):
         pdf, _ = fetch_stock(psym, 30)
         if pdf is not None:
             pat = detect_candle_pattern(pdf)
-            pdf = calculate_ut_bot(pdf)
-            ut_s = "BUY 🚀" if pdf.iloc[-1]['Close'] > pdf.iloc[-1]['UT_Trail'] else "SELL 💥"
-            color = "#10b981" if "BUY" in ut_s else "#ef4444"
-            pulse_class = "pulse-green" if "BUY" in ut_s else "pulse-red"
+            color = "#10b981" if pat.get('score', 0.5) >= 0.5 else "#ef4444"
+            pulse_class = "pulse-green" if color == "#10b981" else "pulse-red"
             with pulse_cols[i]:
                 catalyst = get_stock_catalyst(psym)
                 st.markdown(f"""<div class="stock-card" style="border-left: 4px solid {color}; overflow: hidden;">
@@ -1913,7 +1863,6 @@ def page_explore():
                         <div class="{pulse_class}" style="font-size: 0.6rem; padding: 2px 8px;">LIVE</div>
                     </div>
                     <div style="font-size:0.8rem; color:{color}; font-weight:700">{pat['pattern']}</div>
-                    <div style="font-size:0.75rem; color:{color}; opacity:0.8">UT Bot: {ut_s}</div>
                     <div style="font-size:0.7rem; color:#94a3b8; border-top:1px solid #334155; margin-top:8px; padding-top:4px;">
                         🔍 {catalyst}
                     </div>
@@ -2005,7 +1954,6 @@ def page_backtester():
             df, mapped = fetch_stock(symbol, 250) # ~1 year of daily data
             if df is not None and len(df) > 100:
                 # Prepare data
-                df = calculate_ut_bot(df)
                 prices = df['Close'].dropna().astype(float).tolist()
                 volumes = df['Volume'].dropna().astype(float).tolist()
                 # Train/Load model
@@ -2115,7 +2063,6 @@ def page_prediction():
         
         with st.spinner(f"📡 Processing {symbol}..."):
             df, mapped = fetch_stock(symbol, 250)
-            if df is not None: df = calculate_ut_bot(df)
             live_price = get_realtime_price(symbol, mapped)
             
             if (df is None or df.empty) and live_price is None:
@@ -2136,10 +2083,6 @@ def page_prediction():
                     df_run, _ = fetch_stock(symbol, interval='15m', period='14d')
                 else:
                     df_run = df_1d # Daily is main for swing
-                
-                if df_run is not None: df_run = calculate_ut_bot(df_run)
-                if df_1h is not None: df_1h = calculate_ut_bot(df_1h)
-                if df_1d is not None: df_1d = calculate_ut_bot(df_1d)
 
             if df_run is not None and len(df_run) > 30:
                 prices = df_run['Close'].dropna().astype(float).tolist()
@@ -2219,10 +2162,9 @@ def page_prediction():
         if live_price:
             prev = df.iloc[-1]['Close'] if not df.empty else live_price
             chg = live_price - prev; pct = (chg/prev*100) if prev!=0 else 0
-            ut_s = "BUY 🚀" if live_price > df.iloc[-1]['UT_Trail'] else "SELL 💥"
-            ut_color = "#00b386" if "BUY" in ut_s else "#ef4444"
+            card_color = "#00b386" if chg >= 0 else "#ef4444"
             
-            st.markdown(f"""<div class="stock-card" style="padding:1.5rem; border-right: 12px solid {ut_color};">
+            st.markdown(f"""<div class="stock-card" style="padding:1.5rem; border-right: 12px solid {card_color};">
 <div style="display:flex; justify-content:space-between; align-items:center;">
 <div>
 <div style="font-size:0.8rem; color:#94a3b8; text-transform:uppercase; font-weight:700;">Live Asset Analysis</div>
@@ -2231,10 +2173,6 @@ def page_prediction():
 <div class="{'change-up' if chg>=0 else 'change-down'}" style="font-size:1.1rem; font-weight:700;">
 {'▲' if chg>=0 else '▼'} {chg:+,.2f} ({pct:+.2f}%)
 </div>
-</div>
-<div style="text-align:right;">
-<div style="font-size:0.75rem; color:#94a3b8; text-transform:uppercase; font-weight:800;">UT Bot Intelligence</div>
-<div style="font-size:2rem; color:{ut_color}; font-weight:950;">{ut_s}</div>
 </div>
 </div>
 </div>""", unsafe_allow_html=True)
@@ -2715,7 +2653,7 @@ def page_screener():
     st.caption("Scan the market based on technical indicators and volume spikes to find high-probability trades.")
     
     with st.expander("🛠️ Screener Filters (Technical & Fundamentals)", expanded=True):
-        c1, c2, c3, c4, c5 = st.columns(5)
+        c1, c2, c3, c4 = st.columns(4)
         with c1:
             rsi_filter = st.selectbox("RSI Signal", ["None", "Oversold (<35)", "Bullish (>60)", "Overbought (>70)"])
         with c2:
@@ -2724,8 +2662,6 @@ def page_screener():
             pe_filter = st.selectbox("P/E Ratio", ["Any", "Under 15", "Under 25", "Under 40"])
         with c4:
             pat_filter = st.selectbox("Candlestick Pattern", ["Any", "Bullish Hammer", "Bullish Engulfing", "Bearish Engulfing", "Doji"])
-        with c5:
-            ut_filter = st.selectbox("UT Bot Alert", ["Any", "BUY Signal", "SELL Signal"])
             
     if st.button("🔍 Start Market Scan", use_container_width=True):
         # We screen the Nifty 50 and Top Growth stocks for speed
@@ -2759,11 +2695,8 @@ def page_screener():
                 curr_vol = vols[-1]
                 vol_ratio = float(curr_vol / avg_vol) if avg_vol > 0 else 0.0
                 
-                # Detect Pattern & UT Bot
+                # Detect Pattern
                 pat_res = detect_candle_pattern(df)
-                df = calculate_ut_bot(df)
-                ut_last = df.iloc[-1]
-                ut_s = "BUY" if ut_last['Close'] > ut_last['UT_Trail'] else "SELL"
                 
                 # Apply Filters
                 pass_rsi = True
@@ -2779,10 +2712,6 @@ def page_screener():
                 if pat_filter != "Any":
                     pass_pat = pat_filter.lower() in pat_res['pattern'].lower()
 
-                pass_ut = True
-                if ut_filter == "BUY Signal": pass_ut = ut_s == "BUY"
-                elif ut_filter == "SELL Signal": pass_ut = ut_s == "SELL"
-
                 # Apply PE Filter
                 pass_pe = True
                 f_stats = None # Initialize to prevent NameError
@@ -2794,7 +2723,7 @@ def page_screener():
                         elif pe_filter == "Under 25": pass_pe = curr_pe < 25
                         elif pe_filter == "Under 40": pass_pe = curr_pe < 40
                 
-                if pass_rsi and pass_vol and pass_pat and pass_pe and pass_ut:
+                if pass_rsi and pass_vol and pass_pat and pass_pe:
                     info = get_price_info(sym, 2)
                     if info:
                         # NEW: Market News Collector for the matched stock
@@ -2805,7 +2734,6 @@ def page_screener():
                             'Stock': sym,
                             'Price': f"{info['currency']}{info['price']:,.2f}",
                             'Change%': f"{info['pct']:+.2f}%",
-                            'UT Bot': f"{ut_s} 🤖",
                             'RSI': f"{rsi:.1f}",
                             'P/E': f"{f_stats['pe']:.1f}" if (pe_filter != "Any" and f_stats) else 
                                    f"{fetch_fundamentals(mapped)['pe']:.1f}" if fetch_fundamentals(mapped) else "N/A",

@@ -1489,14 +1489,13 @@ def build_sr_chart(df, symbol, sr_data):
         price    = lvl['price']
         strength = lvl['strength']
         linewidth = min(1 + strength * 0.4, 3)
-        alpha_int = min(80 + strength * 20, 255)
-        alpha_hex = format(alpha_int, '02x')
+        alpha_float = min(80 + strength * 20, 255) / 255.0
         # NOTE: add_shape does NOT take row/col — those args were removed in Plotly 5.x
         fig.add_shape(
             type='line',
             x0=x_start, x1=x_end,
             y0=price,   y1=price,
-            line=dict(color=f'{SUP_COLOR}{alpha_hex}', width=linewidth, dash='dot'),
+            line=dict(color=f'rgba(16, 185, 129, {alpha_float})', width=linewidth, dash='dot'),
         )
         fig.add_annotation(
             x=x_end, y=price,
@@ -1511,13 +1510,12 @@ def build_sr_chart(df, symbol, sr_data):
         price    = lvl['price']
         strength = lvl['strength']
         linewidth = min(1 + strength * 0.4, 3)
-        alpha_int = min(80 + strength * 20, 255)
-        alpha_hex = format(alpha_int, '02x')
+        alpha_float = min(80 + strength * 20, 255) / 255.0
         fig.add_shape(
             type='line',
             x0=x_start, x1=x_end,
             y0=price,   y1=price,
-            line=dict(color=f'{RES_COLOR}{alpha_hex}', width=linewidth, dash='dot'),
+            line=dict(color=f'rgba(239, 68, 68, {alpha_float})', width=linewidth, dash='dot'),
         )
         fig.add_annotation(
             x=x_end, y=price,

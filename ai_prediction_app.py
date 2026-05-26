@@ -1575,7 +1575,7 @@ def build_candle_chart(df, symbol):
     colors = [UP_COLOR if c >= o else DOWN_COLOR for c, o in zip(df['Close'], df['Open'])]
     fig.add_trace(go.Bar(x=df.index, y=df['Volume'], marker_color=colors, name='Vol', opacity=0.3), row=2, col=1)
     
-    fig.update_layout(template='plotly_dark', height=450, showlegend=False, hovermode='x unified')
+    fig.update_layout(template='plotly_white', height=450, showlegend=False, hovermode='x unified')
     return fig
 
 

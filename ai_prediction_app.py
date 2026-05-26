@@ -20,6 +20,7 @@ import joblib
 import os
 import textwrap
 from prediction_tracker import save_prediction, load_history, load_advanced_stats, auto_verify_signals
+
 warnings.filterwarnings('ignore')
 
 st.set_page_config(page_title="AI Market Predictor Pro", page_icon="🧠", layout="wide",
@@ -331,6 +332,8 @@ DASHBOARD_CATEGORIES = {
                        'AMD', 'INTC', 'CRM', 'ORCL', 'UBER', 'PLTR', 'DIS', 'BA',
                        'JPM', 'V', 'MA', 'KO', 'PEP', 'WMT', 'PG', 'JNJ'],
 }
+
+# ─────────────────────────────────────────────────────────────────────────────
 
 WATCHLIST_DEFAULT = ['WIPRO', 'RELIANCE', 'TATASTEEL', 'NIPPON', 'BOSCHLTD', 'VEDL',
                      'TATAMOTORS', 'GOLD', 'SILVER', 'ADANIGREEN', 'SHRIRAMFIN', 'CHOLAFIN',
@@ -1377,14 +1380,193 @@ class AIEngine:
 
 
 # ── Charts ────────────────────────────────────────────────────────────────
+
+def detect_support_resistance(df, window=5, num_levels=5):
+    """
+    Detect support and resistance levels using pivot high/low algorithm.
+    Returns a dict with 'support', 'resistance', signal info, and price context.
+    """
+    if df is None or len(df) < window * 2 + 1:
+        price = float(df['Close'].iloc[-1]) if df is not None and len(df) > 0 else 0
+        return {
+            'support': [], 'resistance': [], 'current_price': price,
+            'nearest_support': 0, 'nearest_resistance': 0,
+            'sr_signal': 'N/A', 'sr_color': '#94a3b8', 'sr_detail': 'Not enough data'
+        }
+
+    highs = df['High'].values
+    lows  = df['Low'].values
+    cur_price = float(df['Close'].iloc[-1])
+
+    raw_res, raw_sup = [], []
+    for i in range(window, len(df) - window):
+        if highs[i] == max(highs[i - window: i + window + 1]):
+            raw_res.append(highs[i])
+        if lows[i] == min(lows[i - window: i + window + 1]):
+            raw_sup.append(lows[i])
+
+    # Cluster nearby levels (within 0.5%)
+    def cluster(levels):
+        if not levels:
+            return []
+        levels = sorted(set(round(l, 2) for l in levels))
+        clusters = []
+        group = [levels[0]]
+        for lvl in levels[1:]:
+            if (lvl - group[-1]) / group[-1] < 0.005:
+                group.append(lvl)
+            else:
+                clusters.append(group)
+                group = [lvl]
+        clusters.append(group)
+        return [{'price': round(sum(g) / len(g), 2), 'strength': len(g)} for g in clusters]
+
+    sup_levels = sorted(cluster(raw_sup), key=lambda x: x['price'])[-num_levels:]
+    res_levels = sorted(cluster(raw_res), key=lambda x: x['price'])[:num_levels]
+
+    # Nearest levels to current price
+    sup_prices = [s['price'] for s in sup_levels if s['price'] < cur_price]
+    res_prices = [r['price'] for r in res_levels if r['price'] > cur_price]
+
+    nearest_sup = max(sup_prices) if sup_prices else (sup_levels[0]['price'] if sup_levels else 0)
+    nearest_res = min(res_prices) if res_prices else (res_levels[-1]['price'] if res_levels else 0)
+
+    # Generate signal
+    sup_dist = abs(cur_price - nearest_sup) / cur_price if nearest_sup else 1
+    res_dist = abs(nearest_res - cur_price) / cur_price if nearest_res else 1
+
+    if sup_dist < 0.015:
+        sig, color, detail = 'BUY ZONE', '#10b981', f'Price near support ₹{nearest_sup:,.2f} — high-probability entry'
+    elif res_dist < 0.015:
+        sig, color, detail = 'SELL ZONE', '#ef4444', f'Price near resistance ₹{nearest_res:,.2f} — consider booking profits'
+    elif cur_price > (nearest_res if nearest_res else cur_price * 1.1):
+        sig, color, detail = 'BREAKOUT', '#00b386', f'Price broke above resistance ₹{nearest_res:,.2f}'
+    elif cur_price < (nearest_sup if nearest_sup else cur_price * 0.9):
+        sig, color, detail = 'BREAKDOWN', '#eb5b3c', f'Price broke below support ₹{nearest_sup:,.2f}'
+    else:
+        sig, color, detail = 'MID-ZONE', '#6366f1', f'Between support ₹{nearest_sup:,.2f} and resistance ₹{nearest_res:,.2f}'
+
+    return {
+        'support': sup_levels,
+        'resistance': res_levels,
+        'current_price': cur_price,
+        'nearest_support': nearest_sup,
+        'nearest_resistance': nearest_res,
+        'sr_signal': sig,
+        'sr_color': color,
+        'sr_detail': detail,
+    }
+
+
+def build_sr_chart(df, symbol, sr_data):
+    """
+    Build Support & Resistance chart with horizontal level lines.
+    FIX: fig.add_shape() does NOT accept row/col in Plotly 5.x — removed those args.
+    """
+    UP_COLOR   = '#00b386'
+    DOWN_COLOR = '#eb5b3c'
+    SUP_COLOR  = '#10b981'
+    RES_COLOR  = '#ef4444'
+    CUR_COLOR  = '#f8fafc'
+
+    fig = go.Figure()
+
+    # ── Candlestick ──────────────────────────────────────────────────────
+    fig.add_trace(go.Candlestick(
+        x=df.index,
+        open=df['Open'], high=df['High'], low=df['Low'], close=df['Close'],
+        increasing_line_color=UP_COLOR, decreasing_line_color=DOWN_COLOR,
+        increasing_fillcolor=UP_COLOR,  decreasing_fillcolor=DOWN_COLOR,
+        name='Price',
+        hovertemplate='<b>%{x|%Y-%m-%d}</b><br>O:%{open:.2f} H:%{high:.2f} L:%{low:.2f} C:%{close:.2f}',
+    ))
+
+    x_start = df.index[0]
+    x_end   = df.index[-1]
+
+    # ── Support levels ───────────────────────────────────────────────────
+    for lvl in sr_data.get('support', []):
+        price    = lvl['price']
+        strength = lvl['strength']
+        linewidth = min(1 + strength * 0.4, 3)
+        alpha_int = min(80 + strength * 20, 255)
+        alpha_hex = format(alpha_int, '02x')
+        # NOTE: add_shape does NOT take row/col — those args were removed in Plotly 5.x
+        fig.add_shape(
+            type='line',
+            x0=x_start, x1=x_end,
+            y0=price,   y1=price,
+            line=dict(color=f'{SUP_COLOR}{alpha_hex}', width=linewidth, dash='dot'),
+        )
+        fig.add_annotation(
+            x=x_end, y=price,
+            text=f"S ₹{price:,.0f} ({strength}x)",
+            showarrow=False,
+            font=dict(size=9, color=SUP_COLOR),
+            xanchor='left', yanchor='middle',
+        )
+
+    # ── Resistance levels ────────────────────────────────────────────────
+    for lvl in sr_data.get('resistance', []):
+        price    = lvl['price']
+        strength = lvl['strength']
+        linewidth = min(1 + strength * 0.4, 3)
+        alpha_int = min(80 + strength * 20, 255)
+        alpha_hex = format(alpha_int, '02x')
+        fig.add_shape(
+            type='line',
+            x0=x_start, x1=x_end,
+            y0=price,   y1=price,
+            line=dict(color=f'{RES_COLOR}{alpha_hex}', width=linewidth, dash='dot'),
+        )
+        fig.add_annotation(
+            x=x_end, y=price,
+            text=f"R ₹{price:,.0f} ({strength}x)",
+            showarrow=False,
+            font=dict(size=9, color=RES_COLOR),
+            xanchor='left', yanchor='middle',
+        )
+
+    # ── Current price line ───────────────────────────────────────────────
+    cur_price = sr_data.get('current_price', float(df['Close'].iloc[-1]))
+    fig.add_shape(
+        type='line',
+        x0=x_start, x1=x_end,
+        y0=cur_price, y1=cur_price,
+        line=dict(color=CUR_COLOR, width=1.5, dash='solid'),
+    )
+    fig.add_annotation(
+        x=x_end, y=cur_price,
+        text=f"CMP ₹{cur_price:,.2f}",
+        showarrow=False,
+        font=dict(size=10, color=CUR_COLOR, family='Arial Black'),
+        xanchor='left', yanchor='middle',
+    )
+
+    fig.update_layout(
+        template='plotly_dark',
+        title=dict(text=f'<b>{symbol}</b> — Support & Resistance Levels', font=dict(size=15, color='#f8fafc')),
+        height=480,
+        showlegend=False,
+        hovermode='x unified',
+        paper_bgcolor='#0f172a',
+        plot_bgcolor='#1e293b',
+        margin=dict(l=40, r=120, t=55, b=40),
+        xaxis=dict(showgrid=True, gridcolor='#334155', rangeslider_visible=False),
+        yaxis=dict(showgrid=True, gridcolor='#334155', tickprefix='₹'),
+    )
+    return fig
+
+
 def build_candle_chart(df, symbol):
-    # Groww Theme Colors
+    """
+    Build simple candlestick chart
+    """
     UP_COLOR = '#00b386'
     DOWN_COLOR = '#eb5b3c'
     
     fig = make_subplots(rows=2, cols=1, shared_xaxes=True, row_heights=[0.8, 0.2], vertical_spacing=0.02)
     
-    # Candlestick
     fig.add_trace(go.Candlestick(
         x=df.index, open=df['Open'], high=df['High'], low=df['Low'], close=df['Close'],
         increasing_line_color=UP_COLOR, decreasing_line_color=DOWN_COLOR,
@@ -1392,257 +1574,18 @@ def build_candle_chart(df, symbol):
         name='Price'
     ), row=1, col=1)
     
-    # Simple Moving Average (subtle)
-    ma20 = df['Close'].rolling(20).mean()
-    fig.add_trace(go.Scatter(x=df.index, y=ma20, line=dict(color='#667eea', width=1, dash='dot'), name='MA20', opacity=0.6), row=1, col=1)
-    
-
-    # Volume
     colors = [UP_COLOR if c >= o else DOWN_COLOR for c, o in zip(df['Close'], df['Open'])]
     fig.add_trace(go.Bar(x=df.index, y=df['Volume'], marker_color=colors, name='Vol', opacity=0.3), row=2, col=1)
     
-    fig.update_layout(
-        template='plotly_white', height=450, showlegend=False,
-        paper_bgcolor='white', plot_bgcolor='white',
-        hovermode='x unified',
-        xaxis_rangeslider_visible=False,
-        margin=dict(l=5, r=5, t=35, b=5)
-    )
-    
-    # Clean up axes (Groww style minimalism)
-    fig.update_xaxes(showgrid=False, zeroline=False, showline=False)
-    fig.update_yaxes(showgrid=True, gridcolor='#f1f5f9', zeroline=False, showline=False, side='right')
-    
+    fig.update_layout(template='plotly_dark', height=450, showlegend=False, hovermode='x unified')
     return fig
 
 
-# ── AI Support & Resistance Detection ────────────────────────────────────────
-def detect_support_resistance(df, window=5, num_levels=5):
-    """
-    Detects Support and Resistance levels using a peak/trough algorithm.
-    - Resistance: local highs (peaks) in the price series
-    - Support:    local lows  (troughs) in the price series
-    Returns a dict with 'resistance', 'support', 'current_price', and 'sr_signal'.
-    """
-    if df is None or len(df) < window * 2 + 1:
-        return {'resistance': [], 'support': [], 'current_price': 0, 'sr_signal': 'N/A'}
-
-    highs  = df['High'].values
-    lows   = df['Low'].values
-    closes = df['Close'].values
-    dates  = df.index
-
-    resistance_levels = []
-    support_levels    = []
-
-    # Find pivot highs and lows using a sliding window
-    for i in range(window, len(df) - window):
-        # Resistance: local maximum in 'High'
-        if highs[i] == max(highs[i - window: i + window + 1]):
-            resistance_levels.append({'price': float(highs[i]), 'date': dates[i], 'strength': 1})
-        # Support: local minimum in 'Low'
-        if lows[i] == min(lows[i - window: i + window + 1]):
-            support_levels.append({'price': float(lows[i]), 'date': dates[i], 'strength': 1})
-
-    def cluster_levels(levels, tolerance_pct=0.008):
-        """Merge price levels that are within tolerance_pct of each other."""
-        if not levels: return []
-        levels = sorted(levels, key=lambda x: x['price'])
-        clustered = []
-        current_cluster = [levels[0]]
-        for lvl in levels[1:]:
-            pct_diff = abs(lvl['price'] - current_cluster[0]['price']) / current_cluster[0]['price']
-            if pct_diff <= tolerance_pct:
-                current_cluster.append(lvl)
-            else:
-                avg_price = np.mean([l['price'] for l in current_cluster])
-                strength  = len(current_cluster)
-                clustered.append({'price': round(avg_price, 2), 'strength': strength})
-                current_cluster = [lvl]
-        if current_cluster:
-            avg_price = np.mean([l['price'] for l in current_cluster])
-            clustered.append({'price': round(avg_price, 2), 'strength': len(current_cluster)})
-        return clustered
-
-    res_clustered = cluster_levels(resistance_levels)
-    sup_clustered = cluster_levels(support_levels)
-
-    # Sort by strength (most tested = most significant), keep top N
-    res_clustered = sorted(res_clustered, key=lambda x: x['strength'], reverse=True)[:num_levels]
-    sup_clustered = sorted(sup_clustered, key=lambda x: x['strength'], reverse=True)[:num_levels]
-
-    current_price = float(closes[-1])
-
-    # --- Generate Smart Entry Signal based on S/R proximity ---
-    nearest_support    = min([s['price'] for s in sup_clustered], key=lambda x: abs(x - current_price)) if sup_clustered else 0
-    nearest_resistance = min([r['price'] for r in res_clustered], key=lambda x: abs(x - current_price)) if res_clustered else 0
-
-    sr_signal = 'NEUTRAL'
-    sr_detail = ''
-    sr_color  = '#94a3b8'
-
-    if nearest_support and nearest_resistance:
-        dist_to_support    = abs(current_price - nearest_support) / current_price
-        dist_to_resistance = abs(current_price - nearest_resistance) / current_price
-
-        if dist_to_support <= 0.015:   # Within 1.5% of support
-            sr_signal = 'BUY ZONE'
-            sr_detail = f'Price near strong support ₹{nearest_support:,.2f} — High R/R entry zone'
-            sr_color  = '#10b981'
-        elif dist_to_resistance <= 0.015:  # Within 1.5% of resistance
-            sr_signal = 'SELL ZONE'
-            sr_detail = f'Price near strong resistance ₹{nearest_resistance:,.2f} — Consider booking profits'
-            sr_color  = '#ef4444'
-        elif current_price > nearest_resistance:
-            sr_signal = 'BREAKOUT'
-            sr_detail = f'Price broke above resistance ₹{nearest_resistance:,.2f} — Bullish momentum'
-            sr_color  = '#00b386'
-        elif current_price < nearest_support:
-            sr_signal = 'BREAKDOWN'
-            sr_detail = f'Price broke below support ₹{nearest_support:,.2f} — Bearish pressure'
-            sr_color  = '#eb5b3c'
-        else:
-            mid = (nearest_support + nearest_resistance) / 2
-            if current_price > mid:
-                sr_signal = 'APPROACHING RESISTANCE'
-                sr_detail = f'Price moving towards resistance ₹{nearest_resistance:,.2f}'
-                sr_color  = '#f59e0b'
-            else:
-                sr_signal = 'APPROACHING SUPPORT'
-                sr_detail = f'Price moving towards support ₹{nearest_support:,.2f}'
-                sr_color  = '#6366f1'
-
-    return {
-        'resistance': sorted(res_clustered, key=lambda x: x['price'], reverse=True),
-        'support':    sorted(sup_clustered, key=lambda x: x['price']),
-        'current_price': current_price,
-        'nearest_support': nearest_support,
-        'nearest_resistance': nearest_resistance,
-        'sr_signal': sr_signal,
-        'sr_detail': sr_detail,
-        'sr_color':  sr_color,
-    }
+# ── Utility Functions ────────────────────────────────────────────────────────
 
 
-def build_sr_chart(df, symbol, sr_data):
-    """
-    Builds a professional Plotly candlestick chart overlaid with AI-detected
-    Support (green) and Resistance (red) level bands.
-    """
-    UP_COLOR   = '#00b386'
-    DOWN_COLOR = '#eb5b3c'
 
-    fig = make_subplots(rows=2, cols=1, shared_xaxes=True,
-                        row_heights=[0.82, 0.18], vertical_spacing=0.01)
 
-    # ── Candlestick ────────────────────────────────────────────────────────
-    fig.add_trace(go.Candlestick(
-        x=df.index, open=df['Open'], high=df['High'],
-        low=df['Low'], close=df['Close'],
-        increasing_line_color=UP_COLOR, decreasing_line_color=DOWN_COLOR,
-        increasing_fillcolor=UP_COLOR,  decreasing_fillcolor=DOWN_COLOR,
-        name='Price'
-    ), row=1, col=1)
-
-    # ── 20 & 50 MA lines ──────────────────────────────────────────────────
-    ma20 = df['Close'].rolling(20).mean()
-    ma50 = df['Close'].rolling(50).mean()
-    fig.add_trace(go.Scatter(x=df.index, y=ma20, line=dict(color='#667eea', width=1.5, dash='dot'),
-                             name='MA20', opacity=0.7), row=1, col=1)
-    fig.add_trace(go.Scatter(x=df.index, y=ma50, line=dict(color='#f59e0b', width=1.5, dash='dash'),
-                             name='MA50', opacity=0.7), row=1, col=1)
-
-    x_start = df.index[0]
-    x_end   = df.index[-1]
-
-    # ── Resistance Levels (red) ───────────────────────────────────────────
-    for i, lvl in enumerate(sr_data.get('resistance', [])):
-        price     = lvl['price']
-        strength  = lvl['strength']
-        linewidth = min(1.0 + strength * 0.3, 3.0)
-        alpha_hex = 'ff' if strength >= 3 else 'cc'
-
-        fig.add_shape(type='line',
-                      x0=x_start, x1=x_end, y0=price, y1=price,
-                      line=dict(color=f'#ef4444{alpha_hex}', width=linewidth, dash='dot'),
-                      row=1, col=1)
-
-        # Shaded band around the level
-        fig.add_shape(type='rect',
-                      x0=x_start, x1=x_end,
-                      y0=price * 0.998, y1=price * 1.002,
-                      fillcolor='rgba(239,68,68,0.07)',
-                      line=dict(width=0), row=1, col=1)
-
-        # Annotation
-        fig.add_annotation(x=x_end, y=price,
-                           text=f'  R{i+1}: ₹{price:,.0f} (×{strength})',
-                           showarrow=False,
-                           font=dict(size=9, color='#ef4444'),
-                           xanchor='left', yanchor='middle')
-
-    # ── Support Levels (green) ────────────────────────────────────────────
-    for i, lvl in enumerate(sr_data.get('support', [])):
-        price     = lvl['price']
-        strength  = lvl['strength']
-        linewidth = min(1.0 + strength * 0.3, 3.0)
-
-        fig.add_shape(type='line',
-                      x0=x_start, x1=x_end, y0=price, y1=price,
-                      line=dict(color='#10b981', width=linewidth, dash='dot'),
-                      row=1, col=1)
-
-        fig.add_shape(type='rect',
-                      x0=x_start, x1=x_end,
-                      y0=price * 0.998, y1=price * 1.002,
-                      fillcolor='rgba(16,185,129,0.07)',
-                      line=dict(width=0), row=1, col=1)
-
-        fig.add_annotation(x=x_end, y=price,
-                           text=f'  S{i+1}: ₹{price:,.0f} (×{strength})',
-                           showarrow=False,
-                           font=dict(size=9, color='#10b981'),
-                           xanchor='left', yanchor='middle')
-
-    # ── Current Price line ────────────────────────────────────────────────
-    cur = sr_data.get('current_price', 0)
-    if cur:
-        fig.add_shape(type='line',
-                      x0=x_start, x1=x_end, y0=cur, y1=cur,
-                      line=dict(color='#ffffff', width=1.5, dash='solid'),
-                      row=1, col=1)
-        fig.add_annotation(x=x_end, y=cur,
-                           text=f'  LTP: ₹{cur:,.2f}',
-                           showarrow=False,
-                           font=dict(size=10, color='#ffffff', family='monospace'),
-                           bgcolor='#334155',
-                           borderpad=3,
-                           xanchor='left', yanchor='middle')
-
-    # ── Volume bars ───────────────────────────────────────────────────────
-    colors = [UP_COLOR if c >= o else DOWN_COLOR for c, o in zip(df['Close'], df['Open'])]
-    fig.add_trace(go.Bar(x=df.index, y=df['Volume'],
-                         marker_color=colors, name='Vol', opacity=0.35), row=2, col=1)
-
-    # ── Layout ────────────────────────────────────────────────────────────
-    fig.update_layout(
-        template='plotly_dark',
-        height=580,
-        showlegend=True,
-        legend=dict(orientation='h', yanchor='bottom', y=1.01, xanchor='right', x=1,
-                    font=dict(size=10), bgcolor='rgba(0,0,0,0)'),
-        paper_bgcolor='#0f172a',
-        plot_bgcolor='#0f172a',
-        hovermode='x unified',
-        xaxis_rangeslider_visible=False,
-        margin=dict(l=5, r=120, t=40, b=5),
-        title=dict(text=f'📈 {symbol} — AI Support & Resistance Map',
-                   font=dict(size=14, color='#f8fafc'), x=0.01)
-    )
-    fig.update_xaxes(showgrid=False, zeroline=False, showline=False, color='#64748b')
-    fig.update_yaxes(showgrid=True, gridcolor='#1e293b', zeroline=False, side='right',
-                     color='#94a3b8')
-    return fig
 
 
 def build_gauge(up_prob, signal, title="Signal"):

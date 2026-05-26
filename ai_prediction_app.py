@@ -2028,13 +2028,13 @@ def page_explore():
             pulse_class = "pulse-green" if color == "#10b981" else "pulse-red"
             with pulse_cols[i]:
                 catalyst = get_stock_catalyst(psym)
-                st.markdown(f"""<div class="stock-card" style="border-left: 4px solid {color}; overflow: hidden;">
+                st.markdown(f"""<div class="stock-card" style="border-left: 4px solid {color}; overflow: hidden; background: #ffffff; color: #0f172a;">
                     <div style="display:flex; justify-content:space-between;">
-                        <div class="name">{psym}</div>
+                        <div class="name" style="color: #0f172a;">{psym}</div>
                         <div class="{pulse_class}" style="font-size: 0.6rem; padding: 2px 8px;">LIVE</div>
                     </div>
                     <div style="font-size:0.8rem; color:{color}; font-weight:700">{pat['pattern']}</div>
-                    <div style="font-size:0.7rem; color:#94a3b8; border-top:1px solid #334155; margin-top:8px; padding-top:4px;">
+                    <div style="font-size:0.7rem; color:#475569; border-top:1px solid #cbd5e1; margin-top:8px; padding-top:4px;">
                         🔍 {catalyst}
                     </div>
                 </div>""", unsafe_allow_html=True)
@@ -2555,22 +2555,22 @@ def page_prediction():
         p_cls = "pulse-green" if "UP" in live_res["bias"] else "pulse-red" if "DOWN" in live_res["bias"] else ""
         
         st.markdown(f'''
-            <div class="pattern-inset">
+            <div class="pattern-inset" style="background: #ffffff; border: 1px solid #cbd5e1;">
                 <div style="text-align:center; flex:1;">
-                    <div style="font-size:0.7rem; color:#94a3b8; text-transform:uppercase;">Trend</div>
+                    <div style="font-size:0.7rem; color:#475569; text-transform:uppercase;">Trend</div>
                     <div class="{p_cls}" style="margin:5px 0; font-size:0.85rem;">{live_res["bias"]}</div>
                     <div style="font-size:1.1rem; font-weight:900; color:{live_res["color"]};">{live_res["pct"]:+.2f}%</div>
                 </div>
-                <div style="width:1px; height:40px; background:#334155;"></div>
+                <div style="width:1px; height:40px; background:#e2e8f0;"></div>
                 <div style="text-align:center; flex:2; padding: 0 15px;">
-                    <div style="font-size:0.75rem; color:#94a3b8; text-transform:uppercase; font-weight:700;">Candlestick Analysis</div>
-                    <div style="font-size:1rem; font-weight:800; color:#f8fafc; margin-top:4px;">{res["pattern"]}</div>
-                    <div style="font-size:0.75rem; color:#94a3b8;">{res["advice"]}</div>
+                    <div style="font-size:0.75rem; color:#475569; text-transform:uppercase; font-weight:700;">Candlestick Analysis</div>
+                    <div style="font-size:1rem; font-weight:800; color:#0f172a; margin-top:4px;">{res["pattern"]}</div>
+                    <div style="font-size:0.75rem; color:#475569;">{res["advice"]}</div>
                 </div>
-                <div style="width:1px; height:40px; background:#334155;"></div>
+                <div style="width:1px; height:40px; background:#e2e8f0;"></div>
                 <div style="text-align:center; flex:1;">
-                    <div style="font-size:0.7rem; color:#94a3b8; text-transform:uppercase;">Volume Signal</div>
-                    <div style="font-size:0.95rem; font-weight:700; color:{'#10b981' if df.iloc[-1]['Volume'] > df['Volume'].tail(20).mean() * 1.5 else '#cbd5e1'}; margin-top:5px;">
+                    <div style="font-size:0.7rem; color:#475569; text-transform:uppercase;">Volume Signal</div>
+                    <div style="font-size:0.95rem; font-weight:700; color:{'#10b981' if df.iloc[-1]['Volume'] > df['Volume'].tail(20).mean() * 1.5 else '#64748b'}; margin-top:5px;">
                         {'SPIKING ⚡' if df.iloc[-1]['Volume'] > df['Volume'].tail(20).mean() * 1.5 else 'NORMAL'}
                     </div>
                 </div>

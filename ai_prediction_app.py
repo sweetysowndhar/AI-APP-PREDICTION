@@ -1317,6 +1317,13 @@ class AIEngine:
                 'ml_prob': round(raw_prob, 4), 'tech_score': main_status['score'],
                 'pattern_score': 0.5,
                 'is_trending': is_trending,
+                'scores': {
+                    'ml_score': round(raw_prob, 4),
+                    'tech_score': round(main_status['score'], 4),
+                    'sentiment_score': round(sentiment_score, 4),
+                    'volume_score': round(volume_score, 4),
+                    'fib_score': round(fib_score, 4)
+                },
                 'breakdown': {
                     'Trend Alignment': "PASS ✅" if not is_conflict else "FAIL ❌",
                     'Volume Confirm': "PASS ✅" if is_vol_strong else "FAIL ❌",
@@ -1710,7 +1717,7 @@ def build_candle_chart(df, symbol, fib_levels=None):
         fig.add_trace(go.Scatter(
             x=[df.index[0]], y=[current_price],
             mode='lines',
-            line=dict(color='rgba(148, 163, 184, 0.7)', width=1, dash='dot'),
+            line=dict(color='#475569', width=1.5, dash='dashdot'),
             name='Fibonacci Levels',
             showlegend=True
         ), row=1, col=1)
@@ -1725,18 +1732,18 @@ def build_candle_chart(df, symbol, fib_levels=None):
             
             if is_support:
                 color = '#10b981'  # Emerald Green
-                width = 2
+                width = 2.5
                 dash = 'dash'
-                label = f"Nearest Support: Fib {lvl*100:.1f}% ({val:.2f})"
+                label = f"<b>Nearest Support: Fib {lvl*100:.1f}% ({val:.2f})</b>"
             elif is_resistance:
                 color = '#ef4444'  # Rose Red
-                width = 2
+                width = 2.5
                 dash = 'dash'
-                label = f"Nearest Resistance: Fib {lvl*100:.1f}% ({val:.2f})"
+                label = f"<b>Nearest Resistance: Fib {lvl*100:.1f}% ({val:.2f})</b>"
             else:
-                color = 'rgba(148, 163, 184, 0.5)'  # Slate Blue muted
-                width = 1
-                dash = 'dot'
+                color = '#94a3b8'  # Darker grey for clear visibility
+                width = 1.5
+                dash = 'dashdot'
                 label = f"Fib {lvl*100:.1f}% ({val:.2f})"
             
             fig.add_hline(
@@ -1744,7 +1751,7 @@ def build_candle_chart(df, symbol, fib_levels=None):
                 line=dict(color=color, width=width, dash=dash),
                 annotation_text=label,
                 annotation_position="top right",
-                annotation_font=dict(size=9, color=color),
+                annotation_font=dict(size=10, color=color, family="sans-serif"),
                 row=1, col=1
             )
             
@@ -2706,6 +2713,37 @@ def page_prediction():
         with tc3: 
             s3 = pred["next_3_days"]["signal"]
             st.markdown(f'<div class="{sig_cls.get(s3, "signal-hold")}">{l3}<br><span style="font-size:1.5rem;">{sig_emoji.get(s3, "⚖️ HOLD")}</span><p style="font-size:0.75rem">Conf: {pred["next_3_days"]["confidence"]:.1%}</p></div>', unsafe_allow_html=True)
+
+        # Confidence breakdown metrics expander
+        scores = pred["today"].get("scores")
+        if scores:
+            with st.expander("📊 View Today's AI Prediction Confidence Score Breakdown"):
+                st.markdown("""
+                <div style="font-size:0.85rem; color:#475569; margin-bottom:15px;">
+                This breakdown shows the raw confidence of each confirmation factor and its weighted contribution to the final <b>Today</b> score.
+                </div>
+                """, unsafe_allow_html=True)
+                
+                c_ml = scores.get('ml_score', 0)
+                c_tech = scores.get('tech_score', 0)
+                c_sent = scores.get('sentiment_score', 0)
+                c_vol = scores.get('volume_score', 0)
+                c_fib = scores.get('fib_score', 0)
+                
+                # Weights
+                w_ml, w_tech, w_sent, w_vol, w_fib = 0.40, 0.30, 0.10, 0.10, 0.10
+                
+                col_b1, col_b2, col_b3, col_b4, col_b5 = st.columns(5)
+                with col_b1:
+                    st.metric(label="🧠 ML Predictor (40%)", value=f"{c_ml:.0%}", delta=f"+{c_ml*w_ml:.1%}")
+                with col_b2:
+                    st.metric(label="📈 Technicals (30%)", value=f"{c_tech:.0%}", delta=f"+{c_tech*w_tech:.1%}")
+                with col_b3:
+                    st.metric(label="🌎 Sentiment (10%)", value=f"{c_sent:.0%}", delta=f"+{c_sent*w_sent:.1%}")
+                with col_b4:
+                    st.metric(label="📊 Volume (10%)", value=f"{c_vol:.0%}", delta=f"+{c_vol*w_vol:.1%}")
+                with col_b5:
+                    st.metric(label="🎯 Fibonacci (10%)", value=f"{c_fib:.0%}", delta=f"+{c_fib*w_fib:.1%}")
 
         # 4. EXECUTIVE REASONING SECTION (Separated Indian & Global News)
         st.markdown('<div class="section-head">🧠 AI Sentiment Pulse (Local vs Global)</div>', unsafe_allow_html=True)

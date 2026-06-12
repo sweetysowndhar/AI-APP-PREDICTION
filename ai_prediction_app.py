@@ -19,6 +19,19 @@ from bs4 import BeautifulSoup
 import joblib
 import os
 import textwrap
+
+# ── Fibonacci Configuration ────────────────────────────────────────
+# Lookback windows per timeframe (in number of data points)
+FIB_LOOKBACK = {
+    "1d": 90,
+    "1h": 30,
+    "15m": 20,
+}
+# Standard Fibonacci retracement levels
+FIB_LEVELS = [0.236, 0.382, 0.5, 0.618, 0.786]
+# Weight contributed to overall confidence (10% of total)
+FIB_WEIGHT = 0.10
+
 from prediction_tracker import save_prediction, load_history, load_advanced_stats, auto_verify_signals
 
 warnings.filterwarnings('ignore')
@@ -937,6 +950,10 @@ def fetch_tv_sentiment(symbol, mapped):
 
 # ── AI Engine ─────────────────────────────────────────────────────────────
 class AIEngine:
+    FIB_LOOKBACK = FIB_LOOKBACK
+    FIB_LEVELS = FIB_LEVELS
+    FIB_WEIGHT = FIB_WEIGHT
+
     def __init__(self):
         self.models = {}
         self.scalers = {}
@@ -1026,6 +1043,41 @@ class AIEngine:
             std20, rsi, macd, adx_approx, obv_rel, 
             atr_approx, is_trending, gm
         ], nan=0.0, posinf=0.0, neginf=0.0).tolist()
+
+    @staticmethod
+    def calculate_fibonacci(df, lookback):
+        """
+        Computes Fibonacci retracement levels over a specified lookback window.
+        1. Retrieves the last `lookback` rows.
+        2. Computes the high and low over that window.
+        3. Returns fib_levels = {level: low + (high-low)*level for level in FIB_LEVELS}
+        """
+        window_df = df.tail(lookback)
+        if window_df.empty:
+            return {lvl: 0.0 for lvl in [0.0, 0.236, 0.382, 0.5, 0.618, 0.786, 1.0]}
+        
+        high = float(window_df['High'].max())
+        low = float(window_df['Low'].min())
+        diff = high - low
+        
+        levels = {}
+        for lvl in [0.236, 0.382, 0.5, 0.618, 0.786]:
+            levels[lvl] = low + diff * lvl
+        
+        levels[0.0] = low
+        levels[1.0] = high
+        return levels
+
+    @staticmethod
+    def fib_near_levels(current_price, fib_levels, tolerance):
+        """
+        Checks if the current price is within tolerance of key Fibonacci levels.
+        Returns booleans for: near_618, near_50, near_382
+        """
+        near_618 = abs(current_price - fib_levels.get(0.618, 0)) <= tolerance
+        near_50 = abs(current_price - fib_levels.get(0.5, 0)) <= tolerance
+        near_382 = abs(current_price - fib_levels.get(0.382, 0)) <= tolerance
+        return near_618, near_50, near_382
 
     def train(self, symbol, prices, volumes, news_sent=0.0):
         # Fetch global index trends for feature correlation
@@ -1138,6 +1190,39 @@ class AIEngine:
         if f_latest is None: return None
         
         feat = sc.transform([f_latest])
+        w_ml, w_tech, w_news, w_tv, w_fib = 0.35, 0.35, 0.15, 0.15, self.FIB_WEIGHT
+        # Determine lookback based on dataframe frequency
+        freq = getattr(df.index, 'freq', None)
+        if freq is None:
+            # Fallback: infer from dataframe length (assume 1d)
+            lookback_key = '1d'
+        else:
+            freq_str = str(freq)
+            if 'D' in freq_str:
+                lookback_key = '1d'
+            elif 'H' in freq_str:
+                lookback_key = '1h'
+            elif 'T' in freq_str:
+                lookback_key = '15m'
+            else:
+                lookback_key = '1d'
+        lookback = self.FIB_LOOKBACK.get(lookback_key, 90)
+        # Compute Fibonacci levels for this timeframe
+        fib_levels = self.calculate_fibonacci(df, lookback)
+        # Tolerance based on ATR or price
+        price_val = float(df['Close'].iloc[-1])
+        atr = np.mean(np.abs(np.diff(df['Close'].tail(14)))) if len(df) >= 14 else price_val * 0.003
+        tolerance = max(atr * 0.25, price_val * 0.003)
+        near_618, near_50, near_382 = self.fib_near_levels(price_val, fib_levels, tolerance)
+        # Determine fib_score according to proximity flags
+        if near_618:
+            fib_score = 1.0
+        elif near_50:
+            fib_score = 0.7
+        elif near_382:
+            fib_score = 0.4
+        else:
+            fib_score = 0.0
         
         # 5. Prediction Ensemble
         results = {}
@@ -1159,6 +1244,14 @@ class AIEngine:
 
         is_trending = f_latest[-1] > 0.5 
         
+        # Compute component scores once outside the loop
+        vol_ratio = v_curr / v_avg if v_avg > 0 else 1.0
+        volume_score = min(vol_ratio / 2.0, 1.0)
+        
+        news_val = (news_sent + 1.0) / 2.0
+        tv_val = (tv_sent + 1.0) / 2.0
+        sentiment_score = (news_val + tv_val) / 2.0
+        
         for label, step_key in zip(labels, steps):
             m_set = self.models[symbol][step_key]
             
@@ -1172,27 +1265,43 @@ class AIEngine:
             raw_prob = p_buy if p_buy > p_sell else p_sell
             ml_side = 1 if p_buy > p_sell else -1
             
-            # Base final score (Dynamic Weights for Backtesting vs Live)
-            w_ml, w_tech, w_news, w_tv = 0.35, 0.35, 0.15, 0.15
-            score_sum = (w_ml * raw_prob) + (w_tech * main_status['score'])
-            denominator = w_ml + w_tech
+            # Base final score (Dynamic Weights based on Fibonacci implementation plan)
+            w_ml, w_tech, w_news, w_vol, w_fib = 0.40, 0.30, 0.10, 0.10, 0.10
             
-            # Only add sentiment weights if data is actually present (above neutral threshold)
-            if abs(news_sent) > 0.01:
-                score_sum += w_news * abs(news_sent)
-                denominator += w_news
+            # Calculate final score with 10% Fibonacci confirmation indicator weight
+            final_score = (
+                (raw_prob * w_ml) +
+                (main_status['score'] * w_tech) +
+                (sentiment_score * w_news) +
+                (volume_score * w_vol) +
+                (fib_score * w_fib)
+            )
             
-            if abs(tv_sent) > 0.01:
-                score_sum += w_tv * abs(tv_sent)
-                denominator += w_tv
-                
-            final_score = score_sum / denominator if denominator > 0 else 0
+            # Calculate what confidence would be without Fibonacci (scaled to 1.0)
+            conf_without_fib = (
+                (raw_prob * w_ml) +
+                (main_status['score'] * w_tech) +
+                (sentiment_score * w_news) +
+                (volume_score * w_vol)
+            ) / 0.90
             
-            # Applying Multipliers
+            # Apply multipliers to the baseline score to see what signal it would produce
+            conf_without_fib *= vol_mult
+            if not is_trending: conf_without_fib *= 0.95
+            conf_without_fib *= mtf_alignment
+            conf_without_fib = min(max(conf_without_fib, 0.0), 1.0)
+            
+            # Applying Multipliers to final_score
             final_score *= vol_mult
-            if not is_trending: final_score *= 0.95 # Minimal penalty for non-trending if other scores are high
+            if not is_trending: final_score *= 0.95
             final_score *= mtf_alignment
-            final_score = min(max(final_score, 0), 1)
+            final_score = min(max(final_score, 0.0), 1.0)
+            
+            # Constraint: Never let Fibonacci alone convert a HOLD signal into a STRONG BUY/SELL (POWER BUY)
+            # If the score without Fibonacci would result in a HOLD (score < 0.40), 
+            # then the final score cannot be >= 0.65 (which would trigger a STRONG signal).
+            if conf_without_fib < 0.40:
+                final_score = min(final_score, 0.64)
             
             # Signal Logic
             if vol_mult <= 0.1: sig = "NO TRADE (Low Volatility)"
@@ -1215,6 +1324,7 @@ class AIEngine:
                     'Volatility OK': "PASS ✅" if vol_mult > 0 else "FAIL ❌"
                 }
             }
+        results['fib_levels'] = fib_levels
         results['mtf_status'] = mtf_data
         results['volatility'] = vol_label
         return results
@@ -1556,9 +1666,9 @@ def build_sr_chart(df, symbol, sr_data):
     return fig
 
 
-def build_candle_chart(df, symbol):
+def build_candle_chart(df, symbol, fib_levels=None):
     """
-    Build simple candlestick chart
+    Build simple candlestick chart with optional Fibonacci levels
     """
     UP_COLOR = '#00b386'
     DOWN_COLOR = '#eb5b3c'
@@ -1569,16 +1679,86 @@ def build_candle_chart(df, symbol):
         x=df.index, open=df['Open'], high=df['High'], low=df['Low'], close=df['Close'],
         increasing_line_color=UP_COLOR, decreasing_line_color=DOWN_COLOR,
         increasing_fillcolor=UP_COLOR, decreasing_fillcolor=DOWN_COLOR,
-        name='Price'
+        name='Price', showlegend=True
     ), row=1, col=1)
     
     colors = [UP_COLOR if c >= o else DOWN_COLOR for c, o in zip(df['Close'], df['Open'])]
-    fig.add_trace(go.Bar(x=df.index, y=df['Volume'], marker_color=colors, name='Vol', opacity=0.3), row=2, col=1)
+    fig.add_trace(go.Bar(x=df.index, y=df['Volume'], marker_color=colors, name='Vol', opacity=0.3, showlegend=False), row=2, col=1)
     
+    show_leg = False
+    
+    if fib_levels:
+        show_leg = True
+        current_price = float(df['Close'].iloc[-1])
+        
+        # Sort levels and identify support/resistance
+        sorted_levels = sorted([(val, lvl) for lvl, val in fib_levels.items()])
+        
+        support_val, support_lvl = None, None
+        resistance_val, resistance_lvl = None, None
+        
+        for val, lvl in sorted_levels:
+            if val <= current_price:
+                support_val = val
+                support_lvl = lvl
+            else:
+                resistance_val = val
+                resistance_lvl = lvl
+                break
+        
+        # Add a dummy trace to show 'Fibonacci Levels' in the legend
+        fig.add_trace(go.Scatter(
+            x=[df.index[0]], y=[current_price],
+            mode='lines',
+            line=dict(color='rgba(148, 163, 184, 0.7)', width=1, dash='dot'),
+            name='Fibonacci Levels',
+            showlegend=True
+        ), row=1, col=1)
+        
+        for lvl, val in fib_levels.items():
+            # Skip 0.0 and 1.0 boundary lines unless they act as the nearest support/resistance
+            if lvl in [0.0, 1.0] and val != support_val and val != resistance_val:
+                continue
+                
+            is_support = (val == support_val)
+            is_resistance = (val == resistance_val)
+            
+            if is_support:
+                color = '#10b981'  # Emerald Green
+                width = 2
+                dash = 'dash'
+                label = f"Nearest Support: Fib {lvl*100:.1f}% ({val:.2f})"
+            elif is_resistance:
+                color = '#ef4444'  # Rose Red
+                width = 2
+                dash = 'dash'
+                label = f"Nearest Resistance: Fib {lvl*100:.1f}% ({val:.2f})"
+            else:
+                color = 'rgba(148, 163, 184, 0.5)'  # Slate Blue muted
+                width = 1
+                dash = 'dot'
+                label = f"Fib {lvl*100:.1f}% ({val:.2f})"
+            
+            fig.add_hline(
+                y=val,
+                line=dict(color=color, width=width, dash=dash),
+                annotation_text=label,
+                annotation_position="top right",
+                annotation_font=dict(size=9, color=color),
+                row=1, col=1
+            )
+            
     fig.update_layout(
-        template='plotly_white', height=450, showlegend=False,
+        template='plotly_white', height=450, showlegend=show_leg,
         paper_bgcolor='white', plot_bgcolor='white',
-        hovermode='x unified'
+        hovermode='x unified',
+        legend=dict(
+            orientation="h",
+            yanchor="bottom",
+            y=1.02,
+            xanchor="right",
+            x=1
+        )
     )
     return fig
 
@@ -2552,7 +2732,8 @@ def page_prediction():
 
         # 5. CANDLE CHART
         st.markdown('<div class="section-head">📊 Market Pulse & Patterns</div>', unsafe_allow_html=True)
-        st.plotly_chart(build_candle_chart(df.tail(60), symbol), use_container_width=True)
+        fib_levels = pred.get('fib_levels')
+        st.plotly_chart(build_candle_chart(df.tail(60), symbol, fib_levels=fib_levels), use_container_width=True)
 
         # 6. TECHNICAL PATTERN INSET (Arranged Under the Chart)
         res = detect_candle_pattern(df.tail(3)); live_res = analyze_live_candle(df)

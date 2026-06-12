@@ -1727,11 +1727,7 @@ def build_candle_chart(df, symbol, fib_levels=None):
             0.5:   {'color': '#22c55e', 'fill': 'rgba(34, 197, 94, 0.05)',  'label': '0.5'},
             0.618: {'color': '#15803d', 'fill': 'rgba(21, 128, 61, 0.05)',  'label': '0.618'},
             0.786: {'color': '#06b6d4', 'fill': 'rgba(6, 182, 212, 0.05)',  'label': '0.786'},
-            1.0:   {'color': '#475569', 'fill': 'rgba(71, 85, 105, 0.05)',  'label': '1'},
-            1.618: {'color': '#2563eb', 'fill': 'rgba(37, 99, 235, 0.05)',  'label': '1.618'},
-            2.618: {'color': '#dc2626', 'fill': 'rgba(220, 38, 38, 0.05)',  'label': '2.618'},
-            3.618: {'color': '#7c3aed', 'fill': 'rgba(124, 58, 237, 0.05)', 'label': '3.618'},
-            4.236: {'color': '#db2777', 'fill': 'rgba(219, 39, 119, 0.05)', 'label': '4.236'}
+            1.0:   {'color': '#475569', 'fill': 'rgba(71, 85, 105, 0.05)',  'label': '1'}
         }
         
         # Calculate level price values
@@ -1764,6 +1760,23 @@ def build_candle_chart(df, symbol, fib_levels=None):
             showlegend=True
         ), row=1, col=1)
         
+        # 3. Draw colored background bands using Layout Shapes (bound to subplot 1)
+        # This prevents any drawing or bleeding into subplot 2 (volume chart)
+        for i in range(len(ordered_levels) - 1):
+            val_low, lvl_low = ordered_levels[i]
+            val_high, lvl_high = ordered_levels[i+1]
+            style_high = fib_styles[lvl_high]
+            if style_high['fill']:
+                fig.add_shape(
+                    type="rect",
+                    x0=start_idx, x1=end_idx,
+                    y0=val_low, y1=val_high,
+                    fillcolor=style_high['fill'],
+                    line=dict(width=0),
+                    xref="x1", yref="y1"
+                )
+        
+        # 4. Draw horizontal Fibonacci lines (no fill to prevent bleeding)
         for val, lvl in ordered_levels:
             style = fib_styles[lvl]
             is_support = (val == support_val)
@@ -1786,8 +1799,6 @@ def build_candle_chart(df, symbol, fib_levels=None):
                 text=[txt_label, ''],
                 textposition='top right',
                 textfont=dict(size=9, color=line_color, family="sans-serif"),
-                fill='tonexty' if style['fill'] else None,
-                fillcolor=style['fill'],
                 showlegend=False
             ), row=1, col=1)
             

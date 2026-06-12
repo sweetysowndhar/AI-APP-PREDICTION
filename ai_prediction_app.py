@@ -1698,6 +1698,26 @@ def build_candle_chart(df, symbol, fib_levels=None):
         show_leg = True
         current_price = float(df['Close'].iloc[-1])
         
+        # 1. Find swing points (High and Low) in the current dataframe tail
+        high_val = float(df['High'].max())
+        low_val = float(df['Low'].min())
+        high_idx = df['High'].idxmax()
+        low_idx = df['Low'].idxmin()
+        
+        # Fibonacci lines are drawn from the first swing point to the end of the chart
+        start_idx = min(high_idx, low_idx)
+        end_idx = df.index[-1]
+        
+        # 2. Add diagonal trend line connecting High and Low swing points
+        fig.add_trace(go.Scatter(
+            x=[high_idx, low_idx],
+            y=[high_val, low_val],
+            mode='lines',
+            line=dict(color='rgba(100, 116, 139, 0.6)', width=1.5, dash='dash'),
+            name='Fib Trend Line',
+            showlegend=False
+        ), row=1, col=1)
+        
         # Sort levels and identify support/resistance
         sorted_levels = sorted([(val, lvl) for lvl, val in fib_levels.items()])
         
@@ -1713,47 +1733,57 @@ def build_candle_chart(df, symbol, fib_levels=None):
                 resistance_lvl = lvl
                 break
         
-        # Add a dummy trace to show 'Fibonacci Levels' in the legend
+        # Dummy trace for legend
         fig.add_trace(go.Scatter(
             x=[df.index[0]], y=[current_price],
             mode='lines',
-            line=dict(color='#475569', width=1.5, dash='dashdot'),
+            line=dict(color='#475569', width=1.5, dash='solid'),
             name='Fibonacci Levels',
             showlegend=True
         ), row=1, col=1)
         
-        for lvl, val in fib_levels.items():
-            # Skip 0.0 and 1.0 boundary lines unless they act as the nearest support/resistance
-            if lvl in [0.0, 1.0] and val != support_val and val != resistance_val:
-                continue
-                
+        # Map of levels to their TradingView colors and fill colors
+        fib_styles = {
+            0.0:   {'color': '#64748b', 'fill': None,                     'label': '0%'},
+            0.236: {'color': '#ef4444', 'fill': 'rgba(239, 68, 68, 0.06)',  'label': '23.6%'},
+            0.382: {'color': '#f97316', 'fill': 'rgba(249, 115, 22, 0.06)', 'label': '38.2%'},
+            0.5:   {'color': '#22c55e', 'fill': 'rgba(34, 197, 94, 0.06)',  'label': '50%'},
+            0.618: {'color': '#15803d', 'fill': 'rgba(21, 128, 61, 0.06)',  'label': '61.8%'},
+            0.786: {'color': '#06b6d4', 'fill': 'rgba(6, 182, 212, 0.06)',  'label': '78.6%'},
+            1.0:   {'color': '#475569', 'fill': 'rgba(71, 85, 105, 0.06)',  'label': '100%'}
+        }
+        
+        # Draw horizontal lines with colored bands using fill='tonexty'
+        # We must add them in ascending order of price values to fill correctly
+        ordered_levels = sorted([(val, lvl) for lvl, val in fib_levels.items() if lvl in fib_styles])
+        
+        for val, lvl in ordered_levels:
+            style = fib_styles[lvl]
             is_support = (val == support_val)
             is_resistance = (val == resistance_val)
             
-            if is_support:
-                color = '#10b981'  # Emerald Green
-                width = 2.5
-                dash = 'dash'
-                label = f"<b>Nearest Support: Fib {lvl*100:.1f}% ({val:.2f})</b>"
-            elif is_resistance:
-                color = '#ef4444'  # Rose Red
-                width = 2.5
-                dash = 'dash'
-                label = f"<b>Nearest Resistance: Fib {lvl*100:.1f}% ({val:.2f})</b>"
-            else:
-                color = '#94a3b8'  # Darker grey for clear visibility
-                width = 1.5
-                dash = 'dashdot'
-                label = f"Fib {lvl*100:.1f}% ({val:.2f})"
+            # Line settings
+            line_color = '#10b981' if is_support else '#ef4444' if is_resistance else style['color']
+            line_width = 2.5 if (is_support or is_resistance) else 1.5
+            line_dash = 'solid'
             
-            fig.add_hline(
-                y=val,
-                line=dict(color=color, width=width, dash=dash),
-                annotation_text=label,
-                annotation_position="top right",
-                annotation_font=dict(size=10, color=color, family="sans-serif"),
-                row=1, col=1
-            )
+            # Label text
+            label_prefix = "Nearest Support: " if is_support else "Nearest Resistance: " if is_resistance else ""
+            txt_label = f"<b>{label_prefix}Fib {style['label']} ({val:.2f})</b>" if (is_support or is_resistance) else f"Fib {style['label']} ({val:.2f})"
+            
+            # Draw line trace starting at start_idx to end_idx
+            fig.add_trace(go.Scatter(
+                x=[start_idx, end_idx],
+                y=[val, val],
+                mode='lines+text',
+                line=dict(color=line_color, width=line_width, dash=line_dash),
+                text=[txt_label, ''],
+                textposition='top right',
+                textfont=dict(size=9, color=line_color, family="sans-serif"),
+                fill='tonexty' if style['fill'] else None,
+                fillcolor=style['fill'],
+                showlegend=False
+            ), row=1, col=1)
             
     fig.update_layout(
         template='plotly_white', height=450, showlegend=show_leg,

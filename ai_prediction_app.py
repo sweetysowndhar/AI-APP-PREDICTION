@@ -1698,7 +1698,7 @@ def build_candle_chart(df, symbol, fib_levels=None):
         show_leg = True
         current_price = float(df['Close'].iloc[-1])
         
-        # 1. Find swing points (High and Low) in the current dataframe tail
+        # 1. Find swing points (High and Low) in the current visible data
         high_val = float(df['High'].max())
         low_val = float(df['Low'].min())
         high_idx = df['High'].idxmax()
@@ -1707,6 +1707,7 @@ def build_candle_chart(df, symbol, fib_levels=None):
         # Fibonacci lines are drawn from the first swing point to the end of the chart
         start_idx = min(high_idx, low_idx)
         end_idx = df.index[-1]
+        diff = high_val - low_val
         
         # 2. Add diagonal trend line connecting High and Low swing points
         fig.add_trace(go.Scatter(
@@ -1718,13 +1719,34 @@ def build_candle_chart(df, symbol, fib_levels=None):
             showlegend=False
         ), row=1, col=1)
         
-        # Sort levels and identify support/resistance
-        sorted_levels = sorted([(val, lvl) for lvl, val in fib_levels.items()])
+        # Map of levels to their TradingView colors and fill colors
+        fib_styles = {
+            0.0:   {'color': '#64748b', 'fill': None,                     'label': '0'},
+            0.236: {'color': '#ef4444', 'fill': 'rgba(239, 68, 68, 0.05)',  'label': '0.236'},
+            0.382: {'color': '#f97316', 'fill': 'rgba(249, 115, 22, 0.05)', 'label': '0.382'},
+            0.5:   {'color': '#22c55e', 'fill': 'rgba(34, 197, 94, 0.05)',  'label': '0.5'},
+            0.618: {'color': '#15803d', 'fill': 'rgba(21, 128, 61, 0.05)',  'label': '0.618'},
+            0.786: {'color': '#06b6d4', 'fill': 'rgba(6, 182, 212, 0.05)',  'label': '0.786'},
+            1.0:   {'color': '#475569', 'fill': 'rgba(71, 85, 105, 0.05)',  'label': '1'},
+            1.618: {'color': '#2563eb', 'fill': 'rgba(37, 99, 235, 0.05)',  'label': '1.618'},
+            2.618: {'color': '#dc2626', 'fill': 'rgba(220, 38, 38, 0.05)',  'label': '2.618'},
+            3.618: {'color': '#7c3aed', 'fill': 'rgba(124, 58, 237, 0.05)', 'label': '3.618'},
+            4.236: {'color': '#db2777', 'fill': 'rgba(219, 39, 119, 0.05)', 'label': '4.236'}
+        }
         
+        # Calculate level price values
+        ordered_levels = []
+        for lvl, style in fib_styles.items():
+            val = low_val + diff * lvl
+            ordered_levels.append((val, lvl))
+            
+        ordered_levels = sorted(ordered_levels)
+        
+        # Find nearest support and resistance
         support_val, support_lvl = None, None
         resistance_val, resistance_lvl = None, None
         
-        for val, lvl in sorted_levels:
+        for val, lvl in ordered_levels:
             if val <= current_price:
                 support_val = val
                 support_lvl = lvl
@@ -1737,25 +1759,10 @@ def build_candle_chart(df, symbol, fib_levels=None):
         fig.add_trace(go.Scatter(
             x=[df.index[0]], y=[current_price],
             mode='lines',
-            line=dict(color='#475569', width=1.5, dash='solid'),
+            line=dict(color='#64748b', width=1.5, dash='solid'),
             name='Fibonacci Levels',
             showlegend=True
         ), row=1, col=1)
-        
-        # Map of levels to their TradingView colors and fill colors
-        fib_styles = {
-            0.0:   {'color': '#64748b', 'fill': None,                     'label': '0%'},
-            0.236: {'color': '#ef4444', 'fill': 'rgba(239, 68, 68, 0.06)',  'label': '23.6%'},
-            0.382: {'color': '#f97316', 'fill': 'rgba(249, 115, 22, 0.06)', 'label': '38.2%'},
-            0.5:   {'color': '#22c55e', 'fill': 'rgba(34, 197, 94, 0.06)',  'label': '50%'},
-            0.618: {'color': '#15803d', 'fill': 'rgba(21, 128, 61, 0.06)',  'label': '61.8%'},
-            0.786: {'color': '#06b6d4', 'fill': 'rgba(6, 182, 212, 0.06)',  'label': '78.6%'},
-            1.0:   {'color': '#475569', 'fill': 'rgba(71, 85, 105, 0.06)',  'label': '100%'}
-        }
-        
-        # Draw horizontal lines with colored bands using fill='tonexty'
-        # We must add them in ascending order of price values to fill correctly
-        ordered_levels = sorted([(val, lvl) for lvl, val in fib_levels.items() if lvl in fib_styles])
         
         for val, lvl in ordered_levels:
             style = fib_styles[lvl]
@@ -1765,18 +1772,17 @@ def build_candle_chart(df, symbol, fib_levels=None):
             # Line settings
             line_color = '#10b981' if is_support else '#ef4444' if is_resistance else style['color']
             line_width = 2.5 if (is_support or is_resistance) else 1.5
-            line_dash = 'solid'
             
             # Label text
-            label_prefix = "Nearest Support: " if is_support else "Nearest Resistance: " if is_resistance else ""
-            txt_label = f"<b>{label_prefix}Fib {style['label']} ({val:.2f})</b>" if (is_support or is_resistance) else f"Fib {style['label']} ({val:.2f})"
+            label_prefix = "Support: " if is_support else "Resistance: " if is_resistance else ""
+            txt_label = f"<b>{label_prefix}{style['label']} ({val:.2f})</b>" if (is_support or is_resistance) else f"{style['label']} ({val:.2f})"
             
             # Draw line trace starting at start_idx to end_idx
             fig.add_trace(go.Scatter(
                 x=[start_idx, end_idx],
                 y=[val, val],
                 mode='lines+text',
-                line=dict(color=line_color, width=line_width, dash=line_dash),
+                line=dict(color=line_color, width=line_width, dash='solid'),
                 text=[txt_label, ''],
                 textposition='top right',
                 textfont=dict(size=9, color=line_color, family="sans-serif"),
@@ -1797,6 +1803,11 @@ def build_candle_chart(df, symbol, fib_levels=None):
             x=1
         )
     )
+    # Remove gridlines and border lines for clean white visual style
+    fig.update_xaxes(showgrid=False, zeroline=False, showline=False, row=1, col=1)
+    fig.update_yaxes(showgrid=False, zeroline=False, showline=False, row=1, col=1)
+    fig.update_xaxes(showgrid=False, zeroline=False, showline=False, row=2, col=1)
+    fig.update_yaxes(showgrid=False, zeroline=False, showline=False, row=2, col=1)
     return fig
 
 

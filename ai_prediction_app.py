@@ -3327,90 +3327,57 @@ def page_prediction():
         
         badge_section_html = ""
         if confluence_detected or setup_stars == 5:
-            badge_section_html = f'''
-            <div style="background: linear-gradient(135deg, rgba(239, 68, 68, 0.2) 0%, rgba(245, 158, 11, 0.2) 100%);
-                        border: 2px solid #ef4444; border-radius: 12px; padding: 15px; text-align: center; margin-bottom: 20px;
-                        box-shadow: 0 4px 15px rgba(239, 68, 68, 0.15);">
-                <div style="font-size: 1.5rem; font-weight: 900; color: #ff5e5e; margin-bottom: 5px;">
-                    🔥 Institutional Confluence Detected
-                </div>
-                <div style="font-size: 0.85rem; color: #cbd5e1;">
-                    Smart Money Concepts and AI models are in perfect alignment. High-probability setup identified.
-                </div>
-            </div>
-            '''
+            badge_section_html = f'''<div style="background: linear-gradient(135deg, rgba(239, 68, 68, 0.2) 0%, rgba(245, 158, 11, 0.2) 100%); border: 2px solid #ef4444; border-radius: 12px; padding: 15px; text-align: center; margin-bottom: 20px; box-shadow: 0 4px 15px rgba(239, 68, 68, 0.15);">
+<div style="font-size: 1.5rem; font-weight: 900; color: #ff5e5e; margin-bottom: 5px;">🔥 Institutional Confluence Detected</div>
+<div style="font-size: 0.85rem; color: #cbd5e1;">Smart Money Concepts and AI models are in perfect alignment. High-probability setup identified.</div>
+</div>'''
 
         # Render scanner UI
-        st.markdown(f'''
-        <div style="background: #0f172a; border: 1px solid #334155; padding: 25px; border-radius: 15px; margin-bottom: 25px; color: #f8fafc;">
-            <div style="font-size: 1.1rem; font-weight: 800; color: #38bdf8; text-transform: uppercase; letter-spacing: 1.5px; margin-bottom: 20px; display: flex; align-items: center; gap: 8px;">
-                🏛️ Institutional Order Block & SMC Scanner
-            </div>
-            {badge_section_html}
-            
-            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 25px;">
-                <!-- Left Column -->
-                <div style="border-right: 1px solid #334155; padding-right: 20px;">
-                    <div style="font-size: 0.7rem; color: #64748b; text-transform: uppercase; font-weight: 800; letter-spacing: 0.5px; margin-bottom: 4px;">Asset / Stock</div>
-                    <div style="font-size: 1.3rem; font-weight: 900; margin-bottom: 15px; color: #f8fafc;">{symbol}</div>
-                    
-                    <div style="font-size: 0.7rem; color: #64748b; text-transform: uppercase; font-weight: 800; letter-spacing: 0.5px; margin-bottom: 4px;">Order Block Type</div>
-                    <div style="font-size: 1.1rem; font-weight: 700; color: {'#10b981' if closest_ob and closest_ob['type'] == 'Bullish' else '#ef4444' if closest_ob else '#94a3b8'}; margin-bottom: 15px;">
-                        {ob_type}
-                    </div>
-                    
-                    <div style="font-size: 0.7rem; color: #64748b; text-transform: uppercase; font-weight: 800; letter-spacing: 0.5px; margin-bottom: 4px;">Zone Range</div>
-                    <div style="font-size: 1.1rem; font-weight: 700; margin-bottom: 15px; font-family: monospace; color: #e2e8f0;">{ob_zone}</div>
-                    
-                    <div style="font-size: 0.7rem; color: #64748b; text-transform: uppercase; font-weight: 800; letter-spacing: 0.5px; margin-bottom: 4px;">Distance to OB Zone</div>
-                    <div style="font-size: 1.1rem; font-weight: 700; color: {'#10b981' if ob_dist <= 1.0 else '#f59e0b' if ob_dist <= 3.0 else '#f8fafc'};">
-                        {f"{ob_dist:.2f}%" if ob_dist != 999.0 else "N/A"}
-                    </div>
-                </div>
-                
-                <!-- Middle Column -->
-                <div style="border-right: 1px solid #334155; padding-right: 20px;">
-                    <div style="font-size: 0.7rem; color: #64748b; text-transform: uppercase; font-weight: 800; letter-spacing: 0.5px; margin-bottom: 4px;">Current Price</div>
-                    <div style="font-size: 1.3rem; font-weight: 900; margin-bottom: 15px; color: #38bdf8;">{curr}{entry_price:,.2f}</div>
-                    
-                    <div style="font-size: 0.7rem; color: #64748b; text-transform: uppercase; font-weight: 800; letter-spacing: 0.5px; margin-bottom: 4px;">OB Age & Freshness</div>
-                    <div style="font-size: 1.1rem; font-weight: 700; margin-bottom: 2px; color: #e2e8f0;">{ob_age_str}</div>
-                    <div style="font-size: 0.95rem; color: #10b981; font-weight: 700; margin-bottom: 15px;">
-                        Freshness: {ob_freshness_pct}%
-                    </div>
-                    
-                    <div style="font-size: 0.7rem; color: #64748b; text-transform: uppercase; font-weight: 800; letter-spacing: 0.5px; margin-bottom: 4px;">Volume State</div>
-                    <div style="font-size: 1.1rem; font-weight: 700; margin-bottom: 15px; color: {'#10b981' if is_vol_strong else '#cbd5e1'};">
-                        {vol_state_str}
-                    </div>
-                    
-                    <div style="font-size: 0.7rem; color: #64748b; text-transform: uppercase; font-weight: 800; letter-spacing: 0.5px; margin-bottom: 4px;">Nearest FVG Zone</div>
-                    <div style="font-size: 1.1rem; font-weight: 700; font-family: monospace; color: #60a5fa;">{fvg_zone}</div>
-                </div>
-
-                <!-- Right Column -->
-                <div>
-                    <div style="font-size: 0.7rem; color: #64748b; text-transform: uppercase; font-weight: 800; letter-spacing: 0.5px; margin-bottom: 4px;">Setup Quality</div>
-                    <div style="font-size: 1.4rem; color: #f59e0b; font-weight: 900; margin-bottom: 12px; letter-spacing: 2px;">{stars_str}</div>
-                    
-                    <div style="font-size: 0.7rem; color: #64748b; text-transform: uppercase; font-weight: 800; letter-spacing: 0.5px; margin-bottom: 4px;">Scanner Status</div>
-                    <div style="font-size: 1.05rem; font-weight: 700; color: {'#10b981' if setup_stars >= 4 else '#f59e0b' if setup_stars >= 3 else '#ef4444'}; margin-bottom: 15px;">
-                        {status_quality}
-                    </div>
-
-                    <div style="font-size: 0.7rem; color: #64748b; text-transform: uppercase; font-weight: 800; letter-spacing: 0.5px; margin-bottom: 8px;">Confluence Checklist</div>
-                    <div style="font-size: 0.8rem; line-height: 1.5; color: #cbd5e1; font-family: system-ui, sans-serif;">
-                        <div style="display:flex; justify-content:space-between; border-bottom: 1px dashed #1e293b; padding: 2px 0;"><span>Bullish/Bearish Order Block:</span> <span>{ob_check}</span></div>
-                        <div style="display:flex; justify-content:space-between; border-bottom: 1px dashed #1e293b; padding: 2px 0;"><span>Fair Value Gap (FVG):</span> <span>{fvg_check}</span></div>
-                        <div style="display:flex; justify-content:space-between; border-bottom: 1px dashed #1e293b; padding: 2px 0;"><span>BOS Confirmed Trend:</span> <span>{bos_check}</span></div>
-                        <div style="display:flex; justify-content:space-between; border-bottom: 1px dashed #1e293b; padding: 2px 0;"><span>Volume Spike (> 1.2x avg):</span> <span>{vol_check}</span></div>
-                        <div style="display:flex; justify-content:space-between; border-bottom: 1px dashed #1e293b; padding: 2px 0;"><span>Fibonacci Support / Retest:</span> <span>{fib_check}</span></div>
-                        <div style="display:flex; justify-content:space-between; padding: 2px 0;"><span>AI Bias Alignment:</span> <span>{ai_check}</span></div>
-                    </div>
-                </div>
-            </div>
-        </div>
-        ''', unsafe_allow_html=True)
+        st.markdown(f'''<div style="background: #0f172a; border: 1px solid #334155; padding: 25px; border-radius: 15px; margin-bottom: 25px; color: #f8fafc;">
+<div style="font-size: 1.1rem; font-weight: 800; color: #38bdf8; text-transform: uppercase; letter-spacing: 1.5px; margin-bottom: 20px; display: flex; align-items: center; gap: 8px;">🏛️ Institutional Order Block & SMC Scanner</div>
+{badge_section_html}
+<div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 25px;">
+<!-- Left Column -->
+<div style="border-right: 1px solid #334155; padding-right: 20px;">
+<div style="font-size: 0.7rem; color: #64748b; text-transform: uppercase; font-weight: 800; letter-spacing: 0.5px; margin-bottom: 4px;">Asset / Stock</div>
+<div style="font-size: 1.3rem; font-weight: 900; margin-bottom: 15px; color: #f8fafc;">{symbol}</div>
+<div style="font-size: 0.7rem; color: #64748b; text-transform: uppercase; font-weight: 800; letter-spacing: 0.5px; margin-bottom: 4px;">Order Block Type</div>
+<div style="font-size: 1.1rem; font-weight: 700; color: {'#10b981' if closest_ob and closest_ob['type'] == 'Bullish' else '#ef4444' if closest_ob else '#94a3b8'}; margin-bottom: 15px;">{ob_type}</div>
+<div style="font-size: 0.7rem; color: #64748b; text-transform: uppercase; font-weight: 800; letter-spacing: 0.5px; margin-bottom: 4px;">Zone Range</div>
+<div style="font-size: 1.1rem; font-weight: 700; margin-bottom: 15px; font-family: monospace; color: #e2e8f0;">{ob_zone}</div>
+<div style="font-size: 0.7rem; color: #64748b; text-transform: uppercase; font-weight: 800; letter-spacing: 0.5px; margin-bottom: 4px;">Distance to OB Zone</div>
+<div style="font-size: 1.1rem; font-weight: 700; color: {'#10b981' if ob_dist <= 1.0 else '#f59e0b' if ob_dist <= 3.0 else '#f8fafc'};">{f"{ob_dist:.2f}%" if ob_dist != 999.0 else "N/A"}</div>
+</div>
+<!-- Middle Column -->
+<div style="border-right: 1px solid #334155; padding-right: 20px;">
+<div style="font-size: 0.7rem; color: #64748b; text-transform: uppercase; font-weight: 800; letter-spacing: 0.5px; margin-bottom: 4px;">Current Price</div>
+<div style="font-size: 1.3rem; font-weight: 900; margin-bottom: 15px; color: #38bdf8;">{curr}{entry_price:,.2f}</div>
+<div style="font-size: 0.7rem; color: #64748b; text-transform: uppercase; font-weight: 800; letter-spacing: 0.5px; margin-bottom: 4px;">OB Age & Freshness</div>
+<div style="font-size: 1.1rem; font-weight: 700; margin-bottom: 2px; color: #e2e8f0;">{ob_age_str}</div>
+<div style="font-size: 0.95rem; color: #10b981; font-weight: 700; margin-bottom: 15px;">Freshness: {ob_freshness_pct}%</div>
+<div style="font-size: 0.7rem; color: #64748b; text-transform: uppercase; font-weight: 800; letter-spacing: 0.5px; margin-bottom: 4px;">Volume State</div>
+<div style="font-size: 1.1rem; font-weight: 700; margin-bottom: 15px; color: {'#10b981' if is_vol_strong else '#cbd5e1'};">{vol_state_str}</div>
+<div style="font-size: 0.7rem; color: #64748b; text-transform: uppercase; font-weight: 800; letter-spacing: 0.5px; margin-bottom: 4px;">Nearest FVG Zone</div>
+<div style="font-size: 1.1rem; font-weight: 700; font-family: monospace; color: #60a5fa;">{fvg_zone}</div>
+</div>
+<!-- Right Column -->
+<div>
+<div style="font-size: 0.7rem; color: #64748b; text-transform: uppercase; font-weight: 800; letter-spacing: 0.5px; margin-bottom: 4px;">Setup Quality</div>
+<div style="font-size: 1.4rem; color: #f59e0b; font-weight: 900; margin-bottom: 12px; letter-spacing: 2px;">{stars_str}</div>
+<div style="font-size: 0.7rem; color: #64748b; text-transform: uppercase; font-weight: 800; letter-spacing: 0.5px; margin-bottom: 4px;">Scanner Status</div>
+<div style="font-size: 1.05rem; font-weight: 700; color: {'#10b981' if setup_stars >= 4 else '#f59e0b' if setup_stars >= 3 else '#ef4444'}; margin-bottom: 15px;">{status_quality}</div>
+<div style="font-size: 0.7rem; color: #64748b; text-transform: uppercase; font-weight: 800; letter-spacing: 0.5px; margin-bottom: 8px;">Confluence Checklist</div>
+<div style="font-size: 0.8rem; line-height: 1.5; color: #cbd5e1; font-family: system-ui, sans-serif;">
+<div style="display:flex; justify-content:space-between; border-bottom: 1px dashed #1e293b; padding: 2px 0;"><span>Bullish/Bearish Order Block:</span> <span>{ob_check}</span></div>
+<div style="display:flex; justify-content:space-between; border-bottom: 1px dashed #1e293b; padding: 2px 0;"><span>Fair Value Gap (FVG):</span> <span>{fvg_check}</span></div>
+<div style="display:flex; justify-content:space-between; border-bottom: 1px dashed #1e293b; padding: 2px 0;"><span>BOS Confirmed Trend:</span> <span>{bos_check}</span></div>
+<div style="display:flex; justify-content:space-between; border-bottom: 1px dashed #1e293b; padding: 2px 0;"><span>Volume Spike (> 1.2x avg):</span> <span>{vol_check}</span></div>
+<div style="display:flex; justify-content:space-between; border-bottom: 1px dashed #1e293b; padding: 2px 0;"><span>Fibonacci Support / Retest:</span> <span>{fib_check}</span></div>
+<div style="display:flex; justify-content:space-between; padding: 2px 0;"><span>AI Bias Alignment:</span> <span>{ai_check}</span></div>
+</div>
+</div>
+</div>
+</div>''', unsafe_allow_html=True)
 
         # 4. EXECUTIVE REASONING SECTION (Separated Indian & Global News)
         st.markdown('<div class="section-head">🧠 AI Sentiment Pulse (Local vs Global)</div>', unsafe_allow_html=True)

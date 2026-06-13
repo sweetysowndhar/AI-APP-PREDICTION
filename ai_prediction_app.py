@@ -356,6 +356,49 @@ WATCHLIST_DEFAULT = ['WIPRO', 'RELIANCE', 'TATASTEEL', 'NIPPON', 'BOSCHLTD', 'VE
 # Inject viewport meta tag for proper mobile rendering
 st.markdown('<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">', unsafe_allow_html=True)
 
+import base64
+
+def get_base64_of_bin_file(bin_file):
+    try:
+        import os
+        if os.path.exists(bin_file):
+            with open(bin_file, 'rb') as f:
+                data = f.read()
+            return base64.b64encode(data).decode()
+    except Exception:
+        pass
+    return ""
+
+bg_img_base64 = get_base64_of_bin_file('background.png')
+if bg_img_base64:
+    st.markdown(f"""
+    <style>
+    [data-testid="stAppViewContainer"] {{
+        background-image: url("data:image/png;base64,{bg_img_base64}") !important;
+        background-size: cover !important;
+        background-position: center !important;
+        background-attachment: fixed !important;
+        background-repeat: no-repeat !important;
+    }}
+    [data-testid="stAppViewContainer"]::before {{
+        content: "" !important;
+        position: absolute !important;
+        top: 0 !important; left: 0 !important; width: 100% !important; height: 100% !important;
+        background: radial-gradient(circle at 50% 0%, rgba(30, 16, 16, 0.4) 0%, rgba(3, 7, 18, 0.88) 75%) !important;
+        pointer-events: none !important;
+        z-index: 0 !important;
+    }}
+    </style>
+    """, unsafe_allow_html=True)
+else:
+    st.markdown("""
+    <style>
+    [data-testid="stAppViewContainer"] {
+        background: radial-gradient(circle at 50% 0%, #1e1010 0%, #030712 70%) !important;
+    }
+    </style>
+    """, unsafe_allow_html=True)
+
 st.markdown("""
 <style>
 /* ── Google Fonts import ── */
@@ -631,9 +674,6 @@ st.markdown("""
 .stApp {
     background-color: #030712 !important;
     color: #f3f4f6 !important;
-}
-[data-testid="stAppViewContainer"] {
-    background: radial-gradient(circle at 50% 0%, #1e1010 0%, #030712 70%) !important;
 }
 [data-testid="stSidebar"] {
     background-color: #050810 !important;

@@ -1190,7 +1190,7 @@ class AIEngine:
         if f_latest is None: return None
         
         feat = sc.transform([f_latest])
-        w_ml, w_tech, w_news, w_tv, w_fib = 0.35, 0.35, 0.15, 0.15, self.FIB_WEIGHT
+        
         # Determine lookback based on dataframe frequency
         freq = getattr(df.index, 'freq', None)
         if freq is None:
@@ -1223,6 +1223,10 @@ class AIEngine:
             fib_score = 0.4
         else:
             fib_score = 0.0
+        
+        # SMC (Smart Money Concepts) feature detection
+        smc = self.detect_smc_features(df)
+        current_price = float(df['Close'].iloc[-1])
         
         # 5. Prediction Ensemble
         results = {}
@@ -1265,52 +1269,120 @@ class AIEngine:
             raw_prob = p_buy if p_buy > p_sell else p_sell
             ml_side = 1 if p_buy > p_sell else -1
             
-            # Base final score (Dynamic Weights based on Fibonacci implementation plan)
-            w_ml, w_tech, w_news, w_vol, w_fib = 0.40, 0.30, 0.10, 0.10, 0.10
+            # SMC parameters & proximity calculations for current label
+            ml_score = raw_prob
+            tech_score = main_status['score']
+            structure_score = 1.0 if smc['current_trend'] == ("Bullish" if ml_side == 1 else "Bearish") else 0.0
             
-            # Calculate final score with 10% Fibonacci confirmation indicator weight
+            # Order Block Score
+            ob_score = 0.0
+            closest_ob = None
+            closest_ob_dist_pct = 999.0
+            if ml_side == 1:
+                obs = smc['active_bullish_ob']
+            else:
+                obs = smc['active_bearish_ob']
+            
+            if obs:
+                best_ob = None
+                min_dist = float('inf')
+                for ob in obs:
+                    if current_price < ob['bottom']:
+                        dist = ob['bottom'] - current_price
+                    elif current_price > ob['top']:
+                        dist = current_price - ob['top']
+                    else:
+                        dist = 0.0
+                    if dist < min_dist:
+                        min_dist = dist
+                        best_ob = ob
+                if best_ob is not None:
+                    closest_ob = best_ob
+                    ref = best_ob['top'] if ml_side == 1 else best_ob['bottom']
+                    prox = 1.0 if min_dist == 0.0 else max(0.0, 1.0 - min_dist / (ref * 0.02))
+                    fresh = max(0.0, 1.0 - (best_ob['age'] * 0.02))
+                    ob_score = prox * fresh
+                    closest_ob_dist_pct = (min_dist / current_price) * 100.0
+            
+            # FVG Score
+            fvg_score = 0.0
+            closest_fvg = None
+            closest_fvg_dist_pct = 999.0
+            if ml_side == 1:
+                fvgs = smc['active_bullish_fvg']
+            else:
+                fvgs = smc['active_bearish_fvg']
+            
+            if fvgs:
+                best_fvg = None
+                min_dist = float('inf')
+                for fvg in fvgs:
+                    if current_price < fvg['bottom']:
+                        dist = fvg['bottom'] - current_price
+                    elif current_price > fvg['top']:
+                        dist = current_price - fvg['top']
+                    else:
+                        dist = 0.0
+                    if dist < min_dist:
+                        min_dist = dist
+                        best_fvg = fvg
+                if best_fvg is not None:
+                    closest_fvg = best_fvg
+                    ref = best_fvg['top'] if ml_side == 1 else best_fvg['bottom']
+                    fvg_score = 1.0 if min_dist == 0.0 else max(0.0, 1.0 - min_dist / (ref * 0.02))
+                    closest_fvg_dist_pct = (min_dist / current_price) * 100.0
+            
+            # Weighted Confluence Score (Factor weights)
             final_score = (
-                (raw_prob * w_ml) +
-                (main_status['score'] * w_tech) +
-                (sentiment_score * w_news) +
-                (volume_score * w_vol) +
-                (fib_score * w_fib)
+                (ml_score * 0.35) +
+                (tech_score * 0.20) +
+                (volume_score * 0.15) +
+                (structure_score * 0.10) +
+                (ob_score * 0.10) +
+                (fib_score * 0.05) +
+                (fvg_score * 0.05)
             )
             
-            # Calculate what confidence would be without Fibonacci (scaled to 1.0)
-            conf_without_fib = (
-                (raw_prob * w_ml) +
-                (main_status['score'] * w_tech) +
-                (sentiment_score * w_news) +
-                (volume_score * w_vol)
-            ) / 0.90
+            # Baseline conviction score (excluding SMC optional components OB, FVG, Fib)
+            # ML(35) + Tech(20) + Vol(15) + Struct(10) = 80%
+            baseline_score = (
+                (ml_score * 0.35) +
+                (tech_score * 0.20) +
+                (volume_score * 0.15) +
+                (structure_score * 0.10)
+            ) / 0.80
             
-            # Apply multipliers to the baseline score to see what signal it would produce
-            conf_without_fib *= vol_mult
-            if not is_trending: conf_without_fib *= 0.95
-            conf_without_fib *= mtf_alignment
-            conf_without_fib = min(max(conf_without_fib, 0.0), 1.0)
+            # Apply Multipliers to both scores
+            baseline_score *= vol_mult
+            if not is_trending: baseline_score *= 0.95
+            baseline_score *= mtf_alignment
+            baseline_score = min(max(baseline_score, 0.0), 1.0)
             
-            # Applying Multipliers to final_score
             final_score *= vol_mult
             if not is_trending: final_score *= 0.95
             final_score *= mtf_alignment
             final_score = min(max(final_score, 0.0), 1.0)
             
-            # Constraint: Never let Fibonacci alone convert a HOLD signal into a STRONG BUY/SELL (POWER BUY)
-            # If the score without Fibonacci would result in a HOLD (score < 0.40), 
-            # then the final score cannot be >= 0.65 (which would trigger a STRONG signal).
-            if conf_without_fib < 0.40:
+            # Guardrails
+            # 1. AI model must align (raw_prob < 0.50 means model is neutral/opposite)
+            if raw_prob < 0.50:
+                final_score = min(final_score, 0.39)
+            # 2. Cannot convert HOLD (baseline < 0.40) to BUY
+            elif baseline_score < 0.40:
+                final_score = min(final_score, 0.39)
+            # 3. Cannot convert HOLD/BUY (baseline < 0.65) to POWER BUY
+            elif baseline_score < 0.65:
                 final_score = min(final_score, 0.64)
             
-            # Signal Logic
+            # Signal Selection
             if vol_mult <= 0.1: sig = "NO TRADE (Low Volatility)"
             elif is_conflict: sig = "NO TRADE (Trend Conflict)"
             elif final_score >= 0.65: sig = "STRONG BUY" if ml_side == 1 else "STRONG SELL"
             elif final_score >= 0.40: sig = "BUY" if ml_side == 1 else "SELL"
             else: sig = "NO TRADE (Low Confidence)"
             
-            stars = 5 if final_score >= 0.85 else 4 if final_score >= 0.75 else 3 if final_score >= 0.65 else 2 if final_score >= 0.50 else 1
+            # Stars scoring based on final confluence score
+            stars = 5 if final_score >= 0.85 else 4 if final_score >= 0.70 else 3 if final_score >= 0.50 else 2 if final_score >= 0.30 else 1
             
             results[label] = {
                 'signal': sig, 'confidence': round(final_score, 4), 'stars': stars,
@@ -1318,17 +1390,28 @@ class AIEngine:
                 'pattern_score': 0.5,
                 'is_trending': is_trending,
                 'scores': {
-                    'ml_score': round(raw_prob, 4),
-                    'tech_score': round(main_status['score'], 4),
-                    'sentiment_score': round(sentiment_score, 4),
+                    'ml_score': round(ml_score, 4),
+                    'tech_score': round(tech_score, 4),
                     'volume_score': round(volume_score, 4),
-                    'fib_score': round(fib_score, 4)
+                    'structure_score': round(structure_score, 4),
+                    'ob_score': round(ob_score, 4),
+                    'fib_score': round(fib_score, 4),
+                    'fvg_score': round(fvg_score, 4)
                 },
                 'breakdown': {
                     'Trend Alignment': "PASS ✅" if not is_conflict else "FAIL ❌",
                     'Volume Confirm': "PASS ✅" if is_vol_strong else "FAIL ❌",
                     'MTF Sync': "PASS ✅" if is_mtf_sync else "FAIL ❌",
                     'Volatility OK': "PASS ✅" if vol_mult > 0 else "FAIL ❌"
+                },
+                'smc': {
+                    'current_trend': smc['current_trend'],
+                    'closest_ob': closest_ob,
+                    'closest_ob_dist_pct': closest_ob_dist_pct,
+                    'closest_fvg': closest_fvg,
+                    'closest_fvg_dist_pct': closest_fvg_dist_pct,
+                    'confluence_detected': stars == 5,
+                    'smc_full': smc
                 }
             }
         results['fib_levels'] = fib_levels
@@ -1358,6 +1441,242 @@ class AIEngine:
         elif rsi < 30: score += 0.1 # Oversold
         
         return {"trend": trend, "rsi": round(rsi, 2), "score": round(score, 2), "pattern": "N/A"}
+
+    @staticmethod
+    def detect_smc_features(df):
+        """
+        Detects Smart Money Concepts (SMC) features in the dataframe:
+        - Swing Highs & Swing Lows (window=2)
+        - Break of Structure (BOS) & Change of Character (CHOCH)
+        - Active Bullish & Bearish Order Blocks (OB) with Freshness Score
+        - Active Bullish & Bearish Fair Value Gaps (FVG)
+        """
+        if df is None or len(df) < 5:
+            return {
+                "swing_highs": [],
+                "swing_lows": [],
+                "bos": [],
+                "choch": [],
+                "active_bullish_ob": [],
+                "active_bearish_ob": [],
+                "active_bullish_fvg": [],
+                "active_bearish_fvg": [],
+                "current_trend": "Neutral"
+            }
+
+        df = df.copy()
+        n = len(df)
+        highs = df['High'].values
+        lows = df['Low'].values
+        closes = df['Close'].values
+        opens = df['Open'].values if 'Open' in df.columns else closes
+        times = df.index
+
+        swing_highs = [] 
+        swing_lows = []  
+        bos_list = []    
+        choch_list = []  
+
+        # Tracks active order blocks
+        active_obs = []
+        
+        # Tracks active FVGs
+        active_fvgs = []
+
+        # Determine starting trend based on simple SMA/EMA
+        current_trend = "Bullish" if closes[-1] >= np.mean(closes) else "Bearish"
+
+        last_swing_high_val = None
+        last_swing_high_idx = None
+        last_swing_low_val = None
+        last_swing_low_idx = None
+
+        # Loop to detect swing points and structure breaks
+        for i in range(2, n):
+            # 1 & 2. Detect Swing Highs and Lows (needs 2 candles future lookahead, so i < n - 2)
+            if i < n - 2:
+                # Detect Swing High at i
+                if highs[i] > highs[i-1] and highs[i] > highs[i-2] and highs[i] > highs[i+1] and highs[i] > highs[i+2]:
+                    swing_highs.append((i, highs[i]))
+                    last_swing_high_val = highs[i]
+                    last_swing_high_idx = i
+
+                # Detect Swing Low at i
+                if lows[i] < lows[i-1] and lows[i] < lows[i-2] and lows[i] < lows[i+1] and lows[i] < lows[i+2]:
+                    swing_lows.append((i, lows[i]))
+                    last_swing_low_val = lows[i]
+                    last_swing_low_idx = i
+
+            # 3. Detect BOS & CHOCH at index i based on the latest confirmed swing points
+            if current_trend == "Bullish":
+                # Break of Structure (Bullish BOS): Close breaks above last swing high
+                if last_swing_high_val is not None and closes[i] > last_swing_high_val:
+                    bos_list.append({
+                        'index': int(i),
+                        'type': 'Bullish',
+                        'price': float(last_swing_high_val),
+                        'time': times[i]
+                    })
+                    # Create Bullish Order Block
+                    ob_idx = None
+                    for k in range(i, max(0, i - 15), -1):
+                        if closes[k] < opens[k]:
+                            ob_idx = k
+                            break
+                    if ob_idx is not None:
+                        active_obs.append({
+                            'index': int(ob_idx),
+                            'top': float(max(opens[ob_idx], closes[ob_idx])),
+                            'bottom': float(lows[ob_idx]),
+                            'high': float(highs[ob_idx]),
+                            'low': float(lows[ob_idx]),
+                            'type': 'Bullish',
+                            'active': True,
+                            'time': times[ob_idx]
+                        })
+                    last_swing_high_val = None # Reset
+
+                # Change of Character (Bearish CHOCH): Close breaks below last swing low
+                elif last_swing_low_val is not None and closes[i] < last_swing_low_val:
+                    choch_list.append({
+                        'index': int(i),
+                        'type': 'Bearish',
+                        'price': float(last_swing_low_val),
+                        'time': times[i]
+                    })
+                    current_trend = "Bearish"
+                    # Create Bearish OB
+                    ob_idx = None
+                    for k in range(i, max(0, i - 15), -1):
+                        if closes[k] > opens[k]:
+                            ob_idx = k
+                            break
+                    if ob_idx is not None:
+                        active_obs.append({
+                            'index': int(ob_idx),
+                            'top': float(highs[ob_idx]),
+                            'bottom': float(min(opens[ob_idx], closes[ob_idx])),
+                            'high': float(highs[ob_idx]),
+                            'low': float(lows[ob_idx]),
+                            'type': 'Bearish',
+                            'active': True,
+                            'time': times[ob_idx]
+                        })
+                    last_swing_low_val = None
+
+            elif current_trend == "Bearish":
+                # Break of Structure (Bearish BOS): Close breaks below last swing low
+                if last_swing_low_val is not None and closes[i] < last_swing_low_val:
+                    bos_list.append({
+                        'index': int(i),
+                        'type': 'Bearish',
+                        'price': float(last_swing_low_val),
+                        'time': times[i]
+                    })
+                    # Create Bearish OB
+                    ob_idx = None
+                    for k in range(i, max(0, i - 15), -1):
+                        if closes[k] > opens[k]:
+                            ob_idx = k
+                            break
+                    if ob_idx is not None:
+                        active_obs.append({
+                            'index': int(ob_idx),
+                            'top': float(highs[ob_idx]),
+                            'bottom': float(min(opens[ob_idx], closes[ob_idx])),
+                            'high': float(highs[ob_idx]),
+                            'low': float(lows[ob_idx]),
+                            'type': 'Bearish',
+                            'active': True,
+                            'time': times[ob_idx]
+                        })
+                    last_swing_low_val = None
+
+                # Change of Character (Bullish CHOCH): Close breaks above last swing high
+                elif last_swing_high_val is not None and closes[i] > last_swing_high_val:
+                    choch_list.append({
+                        'index': int(i),
+                        'type': 'Bullish',
+                        'price': float(last_swing_high_val),
+                        'time': times[i]
+                    })
+                    current_trend = "Bullish"
+                    # Create Bullish OB
+                    ob_idx = None
+                    for k in range(i, max(0, i - 15), -1):
+                        if closes[k] < opens[k]:
+                            ob_idx = k
+                            break
+                    if ob_idx is not None:
+                        active_obs.append({
+                            'index': int(ob_idx),
+                            'top': float(max(opens[ob_idx], closes[ob_idx])),
+                            'bottom': float(lows[ob_idx]),
+                            'high': float(highs[ob_idx]),
+                            'low': float(lows[ob_idx]),
+                            'type': 'Bullish',
+                            'active': True,
+                            'time': times[ob_idx]
+                        })
+                    last_swing_high_val = None
+
+            # 4. FVG Detection
+            if lows[i] > highs[i-2]:
+                active_fvgs.append({
+                    'index': int(i-1),
+                    'bottom': float(highs[i-2]),
+                    'top': float(lows[i]),
+                    'type': 'Bullish',
+                    'active': True,
+                    'time': times[i-1]
+                })
+            if highs[i] < lows[i-2]:
+                active_fvgs.append({
+                    'index': int(i-1),
+                    'bottom': float(highs[i]),
+                    'top': float(lows[i-2]),
+                    'type': 'Bearish',
+                    'active': True,
+                    'time': times[i-1]
+                })
+
+        # Mitigation checking
+        for ob in active_obs:
+            ob_idx = ob['index']
+            ob['age'] = int(n - 1 - ob_idx)
+            for j in range(ob_idx + 1, n):
+                if ob['type'] == 'Bullish':
+                    if lows[j] < ob['low']:
+                        ob['active'] = False
+                        break
+                else:
+                    if highs[j] > ob['high']:
+                        ob['active'] = False
+                        break
+
+        for fvg in active_fvgs:
+            fvg_idx = fvg['index']
+            for j in range(fvg_idx + 2, n):
+                if fvg['type'] == 'Bullish':
+                    if lows[j] < fvg['bottom']:
+                        fvg['active'] = False
+                        break
+                else:
+                    if highs[j] > fvg['top']:
+                        fvg['active'] = False
+                        break
+
+        return {
+            "swing_highs": [(int(idx), float(val)) for idx, val in swing_highs],
+            "swing_lows": [(int(idx), float(val)) for idx, val in swing_lows],
+            "bos": bos_list,
+            "choch": choch_list,
+            "active_bullish_ob": [ob for ob in active_obs if ob['active'] and ob['type'] == 'Bullish'],
+            "active_bearish_ob": [ob for ob in active_obs if ob['active'] and ob['type'] == 'Bearish'],
+            "active_bullish_fvg": [fvg for fvg in active_fvgs if fvg['active'] and fvg['type'] == 'Bullish'],
+            "active_bearish_fvg": [fvg for fvg in active_fvgs if fvg['active'] and fvg['type'] == 'Bearish'],
+            "current_trend": current_trend
+        }
     def calculate_risk_parameters(self, symbol, entry, signal, capital, risk_pct, reward_ratio=2, df=None):
         """Step 1: Risk Engine - Calculates SL, Target, and Position Size"""
         if entry <= 0: return None
@@ -1673,9 +1992,9 @@ def build_sr_chart(df, symbol, sr_data):
     return fig
 
 
-def build_candle_chart(df, symbol, fib_levels=None):
+def build_candle_chart(df, symbol, fib_levels=None, smc=None):
     """
-    Build simple candlestick chart with optional Fibonacci levels
+    Build candlestick chart with optional Fibonacci levels and SMC overlays (Order Blocks, FVGs, BOS/CHOCH)
     """
     UP_COLOR = '#00b386'
     DOWN_COLOR = '#eb5b3c'
@@ -1801,6 +2120,161 @@ def build_candle_chart(df, symbol, fib_levels=None):
                 textfont=dict(size=9, color=line_color, family="sans-serif"),
                 showlegend=False
             ), row=1, col=1)
+
+    # SMC Overlays (Order Blocks, FVGs, BOS/CHOCH)
+    if smc:
+        show_leg = True
+        
+        # Draw active Bullish Order Blocks
+        for ob in smc.get('active_bullish_ob', []):
+            x0 = ob['time']
+            if x0 not in df.index:
+                if x0 < df.index[0]:
+                    x0 = df.index[0]
+                else:
+                    continue
+            fig.add_shape(
+                type="rect",
+                x0=x0, x1=df.index[-1],
+                y0=ob['bottom'], y1=ob['top'],
+                fillcolor='rgba(0, 179, 134, 0.12)',
+                line=dict(color='rgba(0, 179, 134, 0.35)', width=1, dash='solid'),
+                xref="x1", yref="y1"
+            )
+            
+        # Draw active Bearish Order Blocks
+        for ob in smc.get('active_bearish_ob', []):
+            x0 = ob['time']
+            if x0 not in df.index:
+                if x0 < df.index[0]:
+                    x0 = df.index[0]
+                else:
+                    continue
+            fig.add_shape(
+                type="rect",
+                x0=x0, x1=df.index[-1],
+                y0=ob['bottom'], y1=ob['top'],
+                fillcolor='rgba(235, 91, 60, 0.12)',
+                line=dict(color='rgba(235, 91, 60, 0.35)', width=1, dash='solid'),
+                xref="x1", yref="y1"
+            )
+
+        # Draw active Bullish & Bearish FVGs (Fair Value Gaps)
+        for fvg in smc.get('active_bullish_fvg', []):
+            x0 = fvg['time']
+            if x0 not in df.index:
+                if x0 < df.index[0]:
+                    x0 = df.index[0]
+                else:
+                    continue
+            fig.add_shape(
+                type="rect",
+                x0=x0, x1=df.index[-1],
+                y0=fvg['bottom'], y1=fvg['top'],
+                fillcolor='rgba(96, 165, 250, 0.08)',
+                line=dict(color='rgba(96, 165, 250, 0.25)', width=1, dash='dot'),
+                xref="x1", yref="y1"
+            )
+            
+        for fvg in smc.get('active_bearish_fvg', []):
+            x0 = fvg['time']
+            if x0 not in df.index:
+                if x0 < df.index[0]:
+                    x0 = df.index[0]
+                else:
+                    continue
+            fig.add_shape(
+                type="rect",
+                x0=x0, x1=df.index[-1],
+                y0=fvg['bottom'], y1=fvg['top'],
+                fillcolor='rgba(96, 165, 250, 0.08)',
+                line=dict(color='rgba(96, 165, 250, 0.25)', width=1, dash='dot'),
+                xref="x1", yref="y1"
+            )
+
+        # Plot BOS & CHOCH markers & lines
+        bos_x = []
+        bos_y = []
+        bos_text = []
+        for item in smc.get('bos', []):
+            t = item['time']
+            if t in df.index:
+                bos_x.append(t)
+                bos_y.append(item['price'])
+                bos_text.append(f"BOS ({item['type'][:3]})")
+                loc = df.index.get_loc(t)
+                x0 = df.index[max(0, loc - 5)]
+                fig.add_trace(go.Scatter(
+                    x=[x0, t], y=[item['price'], item['price']],
+                    mode='lines',
+                    line=dict(color='rgba(245, 158, 11, 0.65)', width=1.5, dash='dot'),
+                    showlegend=False
+                ), row=1, col=1)
+
+        choch_x = []
+        choch_y = []
+        choch_text = []
+        for item in smc.get('choch', []):
+            t = item['time']
+            if t in df.index:
+                choch_x.append(t)
+                choch_y.append(item['price'])
+                choch_text.append(f"CH ({item['type'][:3]})")
+                loc = df.index.get_loc(t)
+                x0 = df.index[max(0, loc - 5)]
+                fig.add_trace(go.Scatter(
+                    x=[x0, t], y=[item['price'], item['price']],
+                    mode='lines',
+                    line=dict(color='rgba(99, 102, 241, 0.65)', width=1.5, dash='dashdot'),
+                    showlegend=False
+                ), row=1, col=1)
+
+        if bos_x:
+            fig.add_trace(go.Scatter(
+                x=bos_x, y=bos_y,
+                mode='markers+text',
+                marker=dict(symbol='triangle-up', size=7, color='#f59e0b'),
+                text=bos_text,
+                textposition='top center',
+                textfont=dict(size=8, color='#f59e0b'),
+                name='BOS',
+                showlegend=True
+            ), row=1, col=1)
+
+        if choch_x:
+            fig.add_trace(go.Scatter(
+                x=choch_x, y=choch_y,
+                mode='markers+text',
+                marker=dict(symbol='star', size=8, color='#6366f1'),
+                text=choch_text,
+                textposition='top center',
+                textfont=dict(size=8, color='#6366f1'),
+                name='CHOCH',
+                showlegend=True
+            ), row=1, col=1)
+
+        # Legend placeholders
+        fig.add_trace(go.Scatter(
+            x=[df.index[0]], y=[df['Close'].iloc[0]],
+            mode='markers',
+            marker=dict(symbol='square', size=8, color='rgba(0, 179, 134, 0.3)'),
+            name='Bullish OB',
+            showlegend=True
+        ), row=1, col=1)
+        fig.add_trace(go.Scatter(
+            x=[df.index[0]], y=[df['Close'].iloc[0]],
+            mode='markers',
+            marker=dict(symbol='square', size=8, color='rgba(235, 91, 60, 0.3)'),
+            name='Bearish OB',
+            showlegend=True
+        ), row=1, col=1)
+        fig.add_trace(go.Scatter(
+            x=[df.index[0]], y=[df['Close'].iloc[0]],
+            mode='markers',
+            marker=dict(symbol='square', size=8, color='rgba(96, 165, 250, 0.2)'),
+            name='Fair Value Gap (FVG)',
+            showlegend=True
+        ), row=1, col=1)
             
     fig.update_layout(
         template='plotly_white', height=450, showlegend=show_leg,
@@ -2776,26 +3250,167 @@ def page_prediction():
                 </div>
                 """, unsafe_allow_html=True)
                 
-                c_ml = scores.get('ml_score', 0)
-                c_tech = scores.get('tech_score', 0)
-                c_sent = scores.get('sentiment_score', 0)
-                c_vol = scores.get('volume_score', 0)
-                c_fib = scores.get('fib_score', 0)
+                c_ml = scores.get('ml_score', 0.0)
+                c_tech = scores.get('tech_score', 0.0)
+                c_vol = scores.get('volume_score', 0.0)
+                c_struct = scores.get('structure_score', 0.0)
+                c_ob = scores.get('ob_score', 0.0)
+                c_fib = scores.get('fib_score', 0.0)
+                c_fvg = scores.get('fvg_score', 0.0)
                 
                 # Weights
-                w_ml, w_tech, w_sent, w_vol, w_fib = 0.40, 0.30, 0.10, 0.10, 0.10
+                w_ml, w_tech, w_vol, w_struct, w_ob, w_fib, w_fvg = 0.35, 0.20, 0.15, 0.10, 0.10, 0.05, 0.05
                 
-                col_b1, col_b2, col_b3, col_b4, col_b5 = st.columns(5)
+                col_b1, col_b2, col_b3, col_b4, col_b5, col_b6, col_b7 = st.columns(7)
                 with col_b1:
-                    st.metric(label="🧠 ML Predictor (40%)", value=f"{c_ml:.0%}", delta=f"+{c_ml*w_ml:.1%}")
+                    st.metric(label="🧠 ML Predict (35%)", value=f"{c_ml:.0%}", delta=f"+{c_ml*w_ml:.1%}")
                 with col_b2:
-                    st.metric(label="📈 Technicals (30%)", value=f"{c_tech:.0%}", delta=f"+{c_tech*w_tech:.1%}")
+                    st.metric(label="📈 Tech Ind (20%)", value=f"{c_tech:.0%}", delta=f"+{c_tech*w_tech:.1%}")
                 with col_b3:
-                    st.metric(label="🌎 Sentiment (10%)", value=f"{c_sent:.0%}", delta=f"+{c_sent*w_sent:.1%}")
+                    st.metric(label="📊 Volume (15%)", value=f"{c_vol:.0%}", delta=f"+{c_vol*w_vol:.1%}")
                 with col_b4:
-                    st.metric(label="📊 Volume (10%)", value=f"{c_vol:.0%}", delta=f"+{c_vol*w_vol:.1%}")
+                    st.metric(label="⚖️ Structure (10%)", value=f"{c_struct:.0%}", delta=f"+{c_struct*w_struct:.1%}")
                 with col_b5:
-                    st.metric(label="🎯 Fibonacci (10%)", value=f"{c_fib:.0%}", delta=f"+{c_fib*w_fib:.1%}")
+                    st.metric(label="🏛️ Order Block (10%)", value=f"{c_ob:.0%}", delta=f"+{c_ob*w_ob:.1%}")
+                with col_b6:
+                    st.metric(label="🎯 Fibonacci (5%)", value=f"{c_fib:.0%}", delta=f"+{c_fib*w_fib:.1%}")
+                with col_b7:
+                    st.metric(label="⚡ FVG Imbal (5%)", value=f"{c_fvg:.0%}", delta=f"+{c_fvg*w_fvg:.1%}")
+
+        # --- 3.5. INSTITUTIONAL ORDER BLOCK & SMC SCANNER ---
+        # Extract SMC info from pred['today']
+        smc_info = pred['today'].get('smc', {})
+        closest_ob = smc_info.get('closest_ob')
+        closest_fvg = smc_info.get('closest_fvg')
+        ob_dist = smc_info.get('closest_ob_dist_pct', 999.0)
+        fvg_dist = smc_info.get('closest_fvg_dist_pct', 999.0)
+        current_trend = smc_info.get('current_trend', 'Neutral')
+        confluence_detected = smc_info.get('confluence_detected', False)
+        
+        # Setup stars
+        setup_stars = pred['today'].get('stars', 1)
+        stars_str = '⭐' * setup_stars + '☆' * (5 - setup_stars)
+        
+        # Calculate OB Details
+        ob_type = "N/A"
+        ob_zone = "N/A"
+        ob_age_str = "N/A"
+        ob_freshness_pct = 0
+        if closest_ob:
+            ob_type = f"{closest_ob['type']} Order Block"
+            ob_zone = f"{curr}{closest_ob['bottom']:,.2f} - {curr}{closest_ob['top']:,.2f}"
+            age_unit = "Hours" if is_intra else "Days"
+            ob_age_str = f"{closest_ob['age']} {age_unit} Old"
+            ob_freshness_pct = max(0, 100 - closest_ob['age'] * 2)
+
+        # FVG Details
+        fvg_type = "N/A"
+        fvg_zone = "N/A"
+        if closest_fvg:
+            fvg_type = f"{closest_fvg['type']} FVG"
+            fvg_zone = f"{curr}{closest_fvg['bottom']:,.2f} - {curr}{closest_fvg['top']:,.2f}"
+
+        # Volume spike state
+        is_vol_strong = "PASS ✅" in pred['today']['breakdown'].get('Volume Confirm', '')
+        vol_state_str = "Above Average" if is_vol_strong else "Normal"
+        
+        # Status setup quality text
+        status_quality = "✅ High Probability Setup" if setup_stars >= 4 else "⚖️ Moderate Setup" if setup_stars >= 3 else "❌ Low Conviction Setup"
+        
+        # Components status list
+        ob_check = "✅" if closest_ob and ob_dist <= 2.0 else "❌"
+        fvg_check = "✅" if closest_fvg and fvg_dist <= 2.0 else "❌"
+        bos_check = "✅" if current_trend == ("Bullish" if "BUY" in pred['today']['signal'] else "Bearish") else "❌"
+        vol_check = "✅" if is_vol_strong else "❌"
+        fib_check = "✅" if pred['today']['scores'].get('fib_score', 0.0) > 0.0 else "❌"
+        ai_check = "✅" if "BUY" in pred['today']['signal'] or "SELL" in pred['today']['signal'] else "❌"
+        
+        badge_section_html = ""
+        if confluence_detected or setup_stars == 5:
+            badge_section_html = f'''
+            <div style="background: linear-gradient(135deg, rgba(239, 68, 68, 0.2) 0%, rgba(245, 158, 11, 0.2) 100%);
+                        border: 2px solid #ef4444; border-radius: 12px; padding: 15px; text-align: center; margin-bottom: 20px;
+                        box-shadow: 0 4px 15px rgba(239, 68, 68, 0.15);">
+                <div style="font-size: 1.5rem; font-weight: 900; color: #ff5e5e; margin-bottom: 5px;">
+                    🔥 Institutional Confluence Detected
+                </div>
+                <div style="font-size: 0.85rem; color: #cbd5e1;">
+                    Smart Money Concepts and AI models are in perfect alignment. High-probability setup identified.
+                </div>
+            </div>
+            '''
+
+        # Render scanner UI
+        st.markdown(f'''
+        <div style="background: #0f172a; border: 1px solid #334155; padding: 25px; border-radius: 15px; margin-bottom: 25px; color: #f8fafc;">
+            <div style="font-size: 1.1rem; font-weight: 800; color: #38bdf8; text-transform: uppercase; letter-spacing: 1.5px; margin-bottom: 20px; display: flex; align-items: center; gap: 8px;">
+                🏛️ Institutional Order Block & SMC Scanner
+            </div>
+            {badge_section_html}
+            
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 25px;">
+                <!-- Left Column -->
+                <div style="border-right: 1px solid #334155; padding-right: 20px;">
+                    <div style="font-size: 0.7rem; color: #64748b; text-transform: uppercase; font-weight: 800; letter-spacing: 0.5px; margin-bottom: 4px;">Asset / Stock</div>
+                    <div style="font-size: 1.3rem; font-weight: 900; margin-bottom: 15px; color: #f8fafc;">{symbol}</div>
+                    
+                    <div style="font-size: 0.7rem; color: #64748b; text-transform: uppercase; font-weight: 800; letter-spacing: 0.5px; margin-bottom: 4px;">Order Block Type</div>
+                    <div style="font-size: 1.1rem; font-weight: 700; color: {'#10b981' if closest_ob and closest_ob['type'] == 'Bullish' else '#ef4444' if closest_ob else '#94a3b8'}; margin-bottom: 15px;">
+                        {ob_type}
+                    </div>
+                    
+                    <div style="font-size: 0.7rem; color: #64748b; text-transform: uppercase; font-weight: 800; letter-spacing: 0.5px; margin-bottom: 4px;">Zone Range</div>
+                    <div style="font-size: 1.1rem; font-weight: 700; margin-bottom: 15px; font-family: monospace; color: #e2e8f0;">{ob_zone}</div>
+                    
+                    <div style="font-size: 0.7rem; color: #64748b; text-transform: uppercase; font-weight: 800; letter-spacing: 0.5px; margin-bottom: 4px;">Distance to OB Zone</div>
+                    <div style="font-size: 1.1rem; font-weight: 700; color: {'#10b981' if ob_dist <= 1.0 else '#f59e0b' if ob_dist <= 3.0 else '#f8fafc'};">
+                        {f"{ob_dist:.2f}%" if ob_dist != 999.0 else "N/A"}
+                    </div>
+                </div>
+                
+                <!-- Middle Column -->
+                <div style="border-right: 1px solid #334155; padding-right: 20px;">
+                    <div style="font-size: 0.7rem; color: #64748b; text-transform: uppercase; font-weight: 800; letter-spacing: 0.5px; margin-bottom: 4px;">Current Price</div>
+                    <div style="font-size: 1.3rem; font-weight: 900; margin-bottom: 15px; color: #38bdf8;">{curr}{entry_price:,.2f}</div>
+                    
+                    <div style="font-size: 0.7rem; color: #64748b; text-transform: uppercase; font-weight: 800; letter-spacing: 0.5px; margin-bottom: 4px;">OB Age & Freshness</div>
+                    <div style="font-size: 1.1rem; font-weight: 700; margin-bottom: 2px; color: #e2e8f0;">{ob_age_str}</div>
+                    <div style="font-size: 0.95rem; color: #10b981; font-weight: 700; margin-bottom: 15px;">
+                        Freshness: {ob_freshness_pct}%
+                    </div>
+                    
+                    <div style="font-size: 0.7rem; color: #64748b; text-transform: uppercase; font-weight: 800; letter-spacing: 0.5px; margin-bottom: 4px;">Volume State</div>
+                    <div style="font-size: 1.1rem; font-weight: 700; margin-bottom: 15px; color: {'#10b981' if is_vol_strong else '#cbd5e1'};">
+                        {vol_state_str}
+                    </div>
+                    
+                    <div style="font-size: 0.7rem; color: #64748b; text-transform: uppercase; font-weight: 800; letter-spacing: 0.5px; margin-bottom: 4px;">Nearest FVG Zone</div>
+                    <div style="font-size: 1.1rem; font-weight: 700; font-family: monospace; color: #60a5fa;">{fvg_zone}</div>
+                </div>
+
+                <!-- Right Column -->
+                <div>
+                    <div style="font-size: 0.7rem; color: #64748b; text-transform: uppercase; font-weight: 800; letter-spacing: 0.5px; margin-bottom: 4px;">Setup Quality</div>
+                    <div style="font-size: 1.4rem; color: #f59e0b; font-weight: 900; margin-bottom: 12px; letter-spacing: 2px;">{stars_str}</div>
+                    
+                    <div style="font-size: 0.7rem; color: #64748b; text-transform: uppercase; font-weight: 800; letter-spacing: 0.5px; margin-bottom: 4px;">Scanner Status</div>
+                    <div style="font-size: 1.05rem; font-weight: 700; color: {'#10b981' if setup_stars >= 4 else '#f59e0b' if setup_stars >= 3 else '#ef4444'}; margin-bottom: 15px;">
+                        {status_quality}
+                    </div>
+
+                    <div style="font-size: 0.7rem; color: #64748b; text-transform: uppercase; font-weight: 800; letter-spacing: 0.5px; margin-bottom: 8px;">Confluence Checklist</div>
+                    <div style="font-size: 0.8rem; line-height: 1.5; color: #cbd5e1; font-family: system-ui, sans-serif;">
+                        <div style="display:flex; justify-content:space-between; border-bottom: 1px dashed #1e293b; padding: 2px 0;"><span>Bullish/Bearish Order Block:</span> <span>{ob_check}</span></div>
+                        <div style="display:flex; justify-content:space-between; border-bottom: 1px dashed #1e293b; padding: 2px 0;"><span>Fair Value Gap (FVG):</span> <span>{fvg_check}</span></div>
+                        <div style="display:flex; justify-content:space-between; border-bottom: 1px dashed #1e293b; padding: 2px 0;"><span>BOS Confirmed Trend:</span> <span>{bos_check}</span></div>
+                        <div style="display:flex; justify-content:space-between; border-bottom: 1px dashed #1e293b; padding: 2px 0;"><span>Volume Spike (> 1.2x avg):</span> <span>{vol_check}</span></div>
+                        <div style="display:flex; justify-content:space-between; border-bottom: 1px dashed #1e293b; padding: 2px 0;"><span>Fibonacci Support / Retest:</span> <span>{fib_check}</span></div>
+                        <div style="display:flex; justify-content:space-between; padding: 2px 0;"><span>AI Bias Alignment:</span> <span>{ai_check}</span></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        ''', unsafe_allow_html=True)
 
         # 4. EXECUTIVE REASONING SECTION (Separated Indian & Global News)
         st.markdown('<div class="section-head">🧠 AI Sentiment Pulse (Local vs Global)</div>', unsafe_allow_html=True)
@@ -2823,7 +3438,8 @@ def page_prediction():
         # 5. CANDLE CHART
         st.markdown('<div class="section-head">📊 Market Pulse & Patterns</div>', unsafe_allow_html=True)
         fib_levels = pred.get('fib_levels')
-        st.plotly_chart(build_candle_chart(df.tail(60), symbol, fib_levels=fib_levels), use_container_width=True)
+        smc_data = pred['today'].get('smc', {}).get('smc_full') if 'smc' in pred['today'] else None
+        st.plotly_chart(build_candle_chart(df.tail(60), symbol, fib_levels=fib_levels, smc=smc_data), use_container_width=True)
 
         # 6. TECHNICAL PATTERN INSET (Arranged Under the Chart)
         res = detect_candle_pattern(df.tail(3)); live_res = analyze_live_candle(df)

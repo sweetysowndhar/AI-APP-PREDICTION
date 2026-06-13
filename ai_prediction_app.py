@@ -2686,7 +2686,158 @@ def render_trade_proof():
             """, unsafe_allow_html=True)
 
 # ── PAGE: Explore (Groww-style) ───────────────────────────────────────────
+@st.cache_data(ttl=1800)
+def scan_institutional_setups(scan_target):
+    # Instantiate temporary engine inside cached function to avoid hashing session state
+    engine = AIEngine()
+    
+    # 1. Define list of symbols to scan
+    nifty_50 = [
+        'RELIANCE', 'TCS', 'INFY', 'HDFCBANK', 'ICICIBANK', 'SBIN', 'BHARTIARTL',
+        'ITC', 'KOTAKBANK', 'LT', 'AXISBANK', 'WIPRO', 'MARUTI', 'SUNPHARMA',
+        'BAJFINANCE', 'BAJFINSV', 'BAJAJ-AUTO', 'HCLTECH', 'ASIANPAINT', 'TITAN',
+        'ULTRACEMCO', 'NESTLEIND', 'TECHM', 'POWERGRID', 'NTPC', 'ONGC', 'COALINDIA',
+        'DRREDDY', 'CIPLA', 'DIVISLAB', 'EICHERMOT', 'HEROMOTOCO', 'M&M', 'ADANIENT',
+        'ADANIPORTS', 'JSWSTEEL', 'HINDALCO', 'BPCL', 'HINDUNILVR', 'BRITANNIA',
+        'INDUSINDBK', 'TATASTEEL', 'TATAMOTORS', 'GRASIM', 'APOLLOHOSP', 'SBILIFE',
+        'HDFCLIFE', 'LTIM', 'TATAPOWER'
+    ]
+    
+    if scan_target == "Nifty 50 (Fast)":
+        symbols = nifty_50
+    else:
+        # All stocks: get all keys from STOCK_MAP except indices
+        symbols = [sym for sym, mapped in STOCK_MAP.items() if not mapped.startswith('^')]
+        # Deduplicate and sort
+        symbols = sorted(list(set(symbols)))
+
+    # Map symbols to tickers
+    ticker_to_sym = {}
+    tickers_to_download = []
+    for sym in symbols:
+        mapped = STOCK_MAP.get(sym, sym)
+        tickers_to_download.append(mapped)
+        ticker_to_sym[mapped] = sym
+        
+    tickers_to_download = list(set(tickers_to_download))
+    
+    # 2. Batch download using yfinance
+    try:
+        batch_df = yf.download(tickers_to_download, period='150d', interval='1d', group_by='ticker', progress=False)
+    except Exception:
+        return []
+        
+    if batch_df is None or batch_df.empty:
+        return []
+        
+    setups = []
+    is_multi = isinstance(batch_df.columns, pd.MultiIndex)
+    
+    for ticker in tickers_to_download:
+        try:
+            if is_multi:
+                df = batch_df[ticker].dropna(subset=['Close'])
+            else:
+                df = batch_df.dropna(subset=['Close'])
+                
+            if df is None or len(df) < 30:
+                continue
+                
+            df.columns = [c.capitalize() for c in df.columns]
+            
+            smc = engine.detect_smc_features(df)
+            closest_ob = smc.get('closest_ob')
+            closest_ob_dist = smc.get('closest_ob_dist_pct', 999.0)
+            
+            if closest_ob and closest_ob_dist <= 2.5:
+                prices = df['Close'].dropna().astype(float).tolist()
+                volumes = df['Volume'].dropna().astype(float).tolist()
+                sym = ticker_to_sym.get(ticker, ticker.replace('.NS', ''))
+                
+                if sym not in engine.models:
+                    engine.train(sym, prices, volumes, news_sent=0.0)
+                    
+                res = engine.predict(sym, prices, volumes, news_sent=0.0, tv_sent=0.0, intraday=False, df=df)
+                
+                if res and 'today' in res:
+                    pred_today = res['today']
+                    setup_stars = pred_today.get('stars', 1)
+                    confluence = pred_today.get('confidence', 0.0)
+                    signal = pred_today.get('signal', 'HOLD')
+                    
+                    if setup_stars >= 3 and ("BUY" in signal or "SELL" in signal):
+                        ob_zone = f"{closest_ob['bottom']:,.2f} - {closest_ob['top']:,.2f}"
+                        age_str = f"{closest_ob['age']} Days Old"
+                        freshness = max(0, 100 - closest_ob['age'] * 2)
+                        
+                        setups.append({
+                            'symbol': sym,
+                            'ticker': ticker,
+                            'signal': signal,
+                            'confidence': confluence,
+                            'stars': setup_stars,
+                            'ob_type': f"{closest_ob['type']} OB",
+                            'ob_zone': ob_zone,
+                            'ob_dist': closest_ob_dist,
+                            'age': age_str,
+                            'freshness': freshness,
+                            'price': float(df['Close'].iloc[-1])
+                        })
+        except Exception:
+            continue
+            
+    return sorted(setups, key=lambda x: -x['confidence'])
+
 def page_explore():
+    # Today's Opportunities Scanner
+    st.markdown('<div class="section-head">🏛️ Today\'s Institutional Opportunities (Live AI Scan)</div>', unsafe_allow_html=True)
+    
+    c1, c2 = st.columns([1, 3])
+    with c1:
+        scan_target = st.selectbox(
+            "Select Scan Coverage", 
+            ["Nifty 50 (Fast)", "All 350+ Stocks (Thorough)"],
+            index=0,
+            key="home_scan_target"
+        )
+    with c2:
+        st.markdown('<div style="font-size:0.8rem; color:#64748b; margin-top:28px;">Scans stocks in parallel for active Order Blocks, FVG imbalances, and AI confluence.</div>', unsafe_allow_html=True)
+        
+    with st.spinner("🔍 Scanning market for high-probability setups..."):
+        setups = scan_institutional_setups(scan_target)
+        
+    if setups:
+        cols = st.columns(min(4, len(setups)))
+        for i, setup in enumerate(setups[:4]):
+            sig_color = "#10b981" if "BUY" in setup['signal'] else "#ef4444"
+            sig_bg = "rgba(16, 185, 129, 0.1)" if "BUY" in setup['signal'] else "rgba(239, 68, 68, 0.1)"
+            stars_str = '⭐' * setup['stars']
+            
+            is_indian = setup['ticker'].endswith('.NS') or setup['ticker'].endswith('.BO') or setup['ticker'].startswith('^')
+            curr = '₹' if is_indian else '$'
+            
+            with cols[i]:
+                st.markdown(f'''<div style="background: #0f172a; border: 1px solid #334155; border-top: 4px solid {sig_color}; padding: 18px; border-radius: 12px; color: #f8fafc; height: 220px; box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2); display: flex; flex-direction: column; justify-content: space-between;">
+<div>
+<div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+<span style="font-size: 1.1rem; font-weight: 900; color: #f8fafc;">🔥 {setup['symbol']}</span>
+<span style="font-size: 0.7rem; font-weight: 800; background: {sig_bg}; color: {sig_color}; padding: 2px 8px; border-radius: 8px;">{setup['signal']}</span>
+</div>
+<div style="font-size: 1.25rem; font-weight: 900; color: #38bdf8; margin-bottom: 10px;">{curr}{setup['price']:,.2f}</div>
+<div style="font-size: 0.8rem; color: #cbd5e1; margin-bottom: 6px;">🎯 Confluence: <span style="font-weight:700; color:{sig_color};">{setup['confidence']:.0%}</span></div>
+<div style="font-size: 0.8rem; color: #cbd5e1; margin-bottom: 6px;">📐 Setup: <span style="font-weight:700; color:#f59e0b;">{stars_str}</span></div>
+<div style="font-size: 0.75rem; color: #94a3b8; font-family: monospace; margin-bottom: 4px;">OB Zone: {setup['ob_zone']}</div>
+<div style="font-size: 0.75rem; color: #94a3b8; font-family: monospace; margin-bottom: 4px;">OB Dist: {setup['ob_dist']:.2f}%</div>
+</div>
+<div style="border-top: 1px dashed #334155; margin-top: 10px; padding-top: 8px; font-size: 0.7rem; color: #10b981; font-weight: 600;">
+🛡️ {setup['freshness']}% Fresh ({setup['age']})
+</div>
+</div>''', unsafe_allow_html=True)
+        st.markdown("<br>", unsafe_allow_html=True)
+    else:
+        st.info("⚖️ No high-probability Institutional Order Block setups found in this scan. Try switching to 'All 350+ Stocks' or check back later.")
+        st.markdown("<br>", unsafe_allow_html=True)
+
     # Advanced Heatmap
     render_sector_heatmap()
     st.markdown("<br>", unsafe_allow_html=True)

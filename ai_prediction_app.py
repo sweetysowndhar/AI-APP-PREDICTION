@@ -36,7 +36,7 @@ from prediction_tracker import save_prediction, load_history, load_advanced_stat
 
 warnings.filterwarnings('ignore')
 
-st.set_page_config(page_title="SRJ Future Traders", page_icon="🏛️", layout="wide",
+st.set_page_config(page_title="SRV Future Traders", page_icon="🏛️", layout="wide",
                    initial_sidebar_state="expanded")
 
 # ── Complete Groww-Level Stock Map (250+ Stocks) ──────────────────────────
@@ -413,7 +413,7 @@ st.markdown("""
 /* Main Title */
 .main-title {
     font-size: 2.3rem; font-weight: 900; text-align: center;
-    background: linear-gradient(135deg, #06b6d4 0%, #6366f1 50%, #d946ef 100%);
+    background: linear-gradient(135deg, #ef4444 0%, #dc2626 50%, #fbbf24 100%);
     -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;
     margin-bottom: 0.3rem;
     letter-spacing: -0.03em;
@@ -2426,7 +2426,7 @@ def get_market_status():
 # ══════════════════════════════════════════════════════════════════════════
 def main():
     status_text, status_color = get_market_status()
-    st.markdown(f'<div class="main-title">🏛️ SRJ FUTURE TRADERS</div>', unsafe_allow_html=True)
+    st.markdown(f'<div class="main-title">🏛️ SRV FUTURE TRADERS</div>', unsafe_allow_html=True)
     st.markdown(f'<div class="sub-title">Real-time BSE • NSE • MoneyControl — Institutional SMC & AI Predictions &nbsp;'
                 f'<span style="background:{status_color}; color:white; padding:2px 8px; border-radius:12px; font-size:0.75rem; font-weight:700;">{status_text}</span></div>', unsafe_allow_html=True)
 
@@ -2493,7 +2493,7 @@ def main():
 
     # Sidebar
     with st.sidebar:
-        st.markdown("### 🏛️ SRJ Future Traders")
+        st.markdown("### 🏛️ SRV Future Traders")
         page = st.radio("Navigate", [
             "🏠 Explore", "🔮 AI Prediction", "📈 AI Backtester", "🔍 Stock Screener", "📰 Market News",
             "📊 All Stocks", "🏆 Top Movers"
@@ -2557,7 +2557,7 @@ def main():
         page_top_movers()
 
     st.markdown("---")
-    st.caption("🏛️ SRJ Future Traders • BSE • NSE • MoneyControl")
+    st.caption("🏛️ SRV Future Traders • BSE • NSE • MoneyControl")
 
 def build_tradingview_news_widget(symbol, mapped):
     tv_sym = get_tv_symbol(symbol, mapped)

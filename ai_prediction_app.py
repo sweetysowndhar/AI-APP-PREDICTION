@@ -3046,6 +3046,7 @@ def page_prediction():
         live_price = get_realtime_price(symbol, mapped)
         is_indian = mapped.endswith('.NS') or mapped.endswith('.BO') or mapped.startswith('^')
         curr = '₹' if is_indian else '$'
+        entry_price = live_price if live_price else (float(df.iloc[-1]['Close']) if not df.empty else 0.0)
         
         if live_price:
             prev = df.iloc[-1]['Close'] if not df.empty else live_price

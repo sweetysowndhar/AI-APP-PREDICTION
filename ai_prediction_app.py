@@ -2640,6 +2640,131 @@ def get_market_status():
 # MAIN APP
 # ══════════════════════════════════════════════════════════════════════════
 def main():
+    if 'unlocked' not in st.session_state:
+        st.session_state.unlocked = False
+
+    if not st.session_state.unlocked:
+        st.markdown("""
+            <canvas id="matrix-rain-canvas" style="position:fixed; top:0; left:0; width:100vw; height:100vh; z-index:-1; pointer-events:none; background:#000000;"></canvas>
+            <script>
+            (function() {
+                var canvas = document.getElementById("matrix-rain-canvas");
+                if (!canvas) return;
+                var ctx = canvas.getContext("2d");
+                canvas.width = window.innerWidth;
+                canvas.height = window.innerHeight;
+                
+                var characters = "ｱｲｳｴｵｶｷｸｹｺｻｼｽｾｿﾀﾁﾂﾃﾄﾅﾆﾇﾈﾉﾊﾋﾌﾍﾎﾏﾐﾑﾒﾓﾔﾕﾖﾗﾘﾙﾚﾛﾜﾝ1234567890ABCDEFGHIJKLMNOPQRSTUVWXYZ";
+                var charArr = characters.split("");
+                var fontSize = 16;
+                var columns = canvas.width / fontSize;
+                var rainDrops = [];
+                for(var x = 0; x < columns; x++) {
+                    rainDrops[x] = 1;
+                }
+                function draw() {
+                    ctx.fillStyle = "rgba(0, 0, 0, 0.06)";
+                    ctx.fillRect(0, 0, canvas.width, canvas.height);
+                    ctx.fillStyle = "#00FF00";
+                    ctx.font = fontSize + "px monospace";
+                    for(var i = 0; i < rainDrops.length; i++) {
+                        var text = charArr[Math.floor(Math.random() * charArr.length)];
+                        ctx.fillText(text, i * fontSize, rainDrops[i] * fontSize);
+                        if(rainDrops[i] * fontSize > canvas.height && Math.random() > 0.975) {
+                            rainDrops[i] = 0;
+                        }
+                        rainDrops[i]++;
+                    }
+                }
+                setInterval(draw, 30);
+                window.addEventListener("resize", function() {
+                    canvas.width = window.innerWidth;
+                    canvas.height = window.innerHeight;
+                });
+            })();
+            </script>
+            <style>
+            [data-testid="stSidebar"] { display: none !important; }
+            header[data-testid="stHeader"] { display: none !important; }
+            [data-testid="stAppViewContainer"] { background: #000000 !important; background-image: none !important; }
+            [data-testid="stAppViewContainer"]::before { display: none !important; }
+            
+            .hacker-container {
+                display: flex;
+                flex-direction: column;
+                align-items: center;
+                justify-content: center;
+                height: 80vh;
+                text-align: center;
+                z-index: 100;
+            }
+            .hacker-skull {
+                font-size: 8rem;
+                filter: drop-shadow(0 0 20px rgba(0, 255, 0, 0.6));
+                margin-bottom: 25px;
+                animation: pulse-glow 2s infinite ease-in-out;
+            }
+            .hacker-title {
+                font-family: 'Courier New', Courier, monospace;
+                font-size: 4rem;
+                font-weight: 900;
+                color: #00FF00;
+                letter-spacing: 16px;
+                margin-bottom: 12px;
+                text-shadow: 0 0 15px rgba(0, 255, 0, 0.8);
+            }
+            .hacker-subtitle {
+                font-family: 'Courier New', Courier, monospace;
+                font-size: 1.25rem;
+                font-weight: 600;
+                color: #00FF00;
+                letter-spacing: 8px;
+                margin-bottom: 50px;
+                text-shadow: 0 0 8px rgba(0, 255, 0, 0.6);
+            }
+            @keyframes pulse-glow {
+                0%, 100% { transform: scale(1); filter: drop-shadow(0 0 20px rgba(0,255,0,0.6)); }
+                50% { transform: scale(1.05); filter: drop-shadow(0 0 35px rgba(0,255,0,0.9)); }
+            }
+            
+            div.stButton > button {
+                background: transparent !important;
+                border: 2px solid #00ff00 !important;
+                box-shadow: 0 0 15px rgba(0, 255, 0, 0.4) !important;
+                color: #00ff00 !important;
+                font-family: 'Courier New', Courier, monospace !important;
+                font-size: 1.35rem !important;
+                font-weight: 900 !important;
+                letter-spacing: 4px !important;
+                padding: 16px 45px !important;
+                border-radius: 4px !important;
+                transition: all 0.3s ease !important;
+                text-shadow: 0 0 5px #00ff00 !important;
+            }
+            div.stButton > button:hover {
+                background: #00ff00 !important;
+                color: #000000 !important;
+                box-shadow: 0 0 30px #00ff00 !important;
+                text-shadow: none !important;
+                transform: scale(1.05);
+            }
+            </style>
+        """, unsafe_allow_html=True)
+        
+        st.markdown('<div class="hacker-container">', unsafe_allow_html=True)
+        st.markdown('<div class="hacker-skull">💀</div>', unsafe_allow_html=True)
+        st.markdown('<div class="hacker-title">HACKER</div>', unsafe_allow_html=True)
+        st.markdown('<div class="hacker-subtitle">SYSTEM BREACHED</div>', unsafe_allow_html=True)
+        
+        c1, c2, c3 = st.columns([1, 2, 1])
+        with c2:
+            if st.button("ACCESS GRANTED ▮", key="hacker_unlock"):
+                st.session_state.unlocked = True
+                st.rerun()
+                
+        st.markdown('</div>', unsafe_allow_html=True)
+        st.stop()
+
     status_text, status_color = get_market_status()
     st.markdown(f'<div class="main-title">🏛️ SRV FUTURE TRADERS</div>', unsafe_allow_html=True)
     st.markdown(f'<div class="sub-title">Real-time BSE • NSE • MoneyControl — Institutional SMC & AI Predictions &nbsp;'

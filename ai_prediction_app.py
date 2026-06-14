@@ -4068,6 +4068,52 @@ def page_prediction():
             tamil_summary = f"ஒரு முக்கியமான பிரேக்அவுட் (Breakout) உறுதி செய்யப்பட்டுள்ளது. பலமான ஏற்றம் அல்லது இறக்கம் எதிர்பார்க்கப்படுகிறது."
         else:
             tamil_summary = "சந்தையின் போக்கு சீராக உள்ளது. தொழில்நுட்ப காரணிகள் சாதகமாக உள்ளன (Institutional Alignment)."
+
+        # Determine execution details or N/A
+        if "HOLD" in today_sig or "NO TRADE" in today_sig:
+            exec_html = f'''
+            <div style="font-size:0.85rem; color:#64748b; margin-bottom:12px; font-weight:700; text-transform:uppercase;">Execution Levels</div>
+            <div style="text-align:center; padding: 25px 0; color:#94a3b8;">
+                <div style="font-size:2rem; margin-bottom:5px;">⚖️</div>
+                <div style="font-size:0.9rem; font-weight:700; color:#f59e0b; text-transform:uppercase; letter-spacing:0.5px;">N/A — HOLD POSITION</div>
+                <div style="font-size:0.75rem; color:#64748b; margin-top:6px; line-height:1.4;">சந்தையில் தற்போதைக்கு புதிய வர்த்தகங்கள் (New Trade Entry) தவிர்க்கப்பட வேண்டும்.</div>
+            </div>
+            '''
+        else:
+            qty_label = "Quantity to Buy" if "BUY" in today_sig else "Quantity to Short"
+            exec_html = f'''
+            <div style="font-size:0.85rem; color:#64748b; margin-bottom:12px; font-weight:700; text-transform:uppercase;">Execution Levels</div>
+            <div style="display:flex; justify-content:space-between; margin-bottom:8px;">
+                <span style="color:#94a3b8;">Entry</span>
+                <span style="font-weight:800; color:#f8fafc;">₹{rp.get('entry', 0):,.2f}</span>
+            </div>
+            <div style="display:flex; justify-content:space-between; margin-bottom:8px;">
+                <span style="color:#94a3b8;">Stop Loss</span>
+                <span style="font-weight:800; color:#ef4444;">₹{rp.get('sl', 0):,.2f}</span>
+            </div>
+            <div style="display:flex; justify-content:space-between; margin-bottom:8px;">
+                <span style="color:#94a3b8;">Target</span>
+                <span style="font-weight:800; color:#10b981;">₹{rp.get('target', 0):,.2f}</span>
+            </div>
+            <hr style="border:0.5px solid #334155; margin:10px 0;">
+            <div style="display:flex; justify-content:space-between; font-size:0.8rem;">
+                <span style="color:#64748b;">Risk Amount (Max Loss)</span>
+                <span style="color:#ef4444; font-weight:800;">₹{rp.get('risk_amt', 0):,.0f}</span>
+            </div>
+            <div style="display:flex; justify-content:space-between; font-size:0.8rem; margin-top:4px;">
+                <span style="color:#64748b;">Reward (Target Profit)</span>
+                <span style="color:#10b981; font-weight:800;">₹{rp.get('profit_amt', 0):,.0f}</span>
+            </div>
+            <div style="display:flex; justify-content:space-between; font-size:0.8rem; margin-top:4px;">
+                <span style="color:#64748b;">{qty_label}</span>
+                <span style="color:#38bdf8; font-weight:800;">{rp.get('pos_size', 0)} Shares</span>
+            </div>
+            <div style="display:flex; justify-content:space-between; font-size:0.8rem; margin-top:4px;">
+                <span style="color:#64748b;">Risk/Reward Ratio</span>
+                <span style="color:#f8fafc; font-weight:700;">{rp.get('risk_reward', '1:2')}</span>
+            </div>
+            '''
+
         st.markdown(f'''<div style="background: {v_col}10; border: 2px solid {v_col}; padding: 30px; border-radius: 20px; border-left: 10px solid {v_col}; margin-bottom:30px;">
 <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:20px;">
 <div style="display:flex; align-items:center;">
@@ -4089,36 +4135,7 @@ def page_prediction():
 <div style="font-size:1.1rem; color:#94a3b8; font-weight:600; margin-top:10px;">{tamil_summary}</div>
 </div>
 <div style="background:rgba(0,0,0,0.3); padding:20px; border-radius:15px; border:1px solid rgba(255,255,255,0.05); text-align:left;">
-<div style="font-size:0.85rem; color:#64748b; margin-bottom:12px; font-weight:700; text-transform:uppercase;">Execution Levels</div>
-<div style="display:flex; justify-content:space-between; margin-bottom:8px;">
-<span style="color:#94a3b8;">Entry</span>
-<span style="font-weight:800; color:#f8fafc;">₹{rp.get('entry', 0):,.2f}</span>
-</div>
-<div style="display:flex; justify-content:space-between; margin-bottom:8px;">
-<span style="color:#94a3b8;">Stop Loss</span>
-<span style="font-weight:800; color:#ef4444;">₹{rp.get('sl', 0):,.2f}</span>
-</div>
-<div style="display:flex; justify-content:space-between; margin-bottom:8px;">
-<span style="color:#94a3b8;">Target</span>
-<span style="font-weight:800; color:#10b981;">₹{rp.get('target', 0):,.2f}</span>
-</div>
-<hr style="border:0.5px solid #334155; margin:10px 0;">
-<div style="display:flex; justify-content:space-between; font-size:0.8rem;">
-<span style="color:#64748b;">Risk Amount (Max Loss)</span>
-<span style="color:#ef4444; font-weight:800;">₹{rp.get('risk_amt', 0):,.0f}</span>
-</div>
-<div style="display:flex; justify-content:space-between; font-size:0.8rem; margin-top:4px;">
-<span style="color:#64748b;">Reward (Target Profit)</span>
-<span style="color:#10b981; font-weight:800;">₹{rp.get('profit_amt', 0):,.0f}</span>
-</div>
-<div style="display:flex; justify-content:space-between; font-size:0.8rem; margin-top:4px;">
-<span style="color:#64748b;">Quantity to Buy</span>
-<span style="color:#38bdf8; font-weight:800;">{rp.get('pos_size', 0)} Shares</span>
-</div>
-<div style="display:flex; justify-content:space-between; font-size:0.8rem; margin-top:4px;">
-<span style="color:#64748b;">Risk/Reward Ratio</span>
-<span style="color:#f8fafc; font-weight:700;">{rp.get('risk_reward', '1:2')}</span>
-</div>
+{exec_html}
 <div style="margin-top:20px; padding-top:10px; border-top:1px solid #334155;">
 <div style="font-size:0.65rem; color:#64748b; margin-bottom:10px; font-weight:700; text-transform:uppercase;">Confidence Breakdown</div>
 {bd_html}

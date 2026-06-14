@@ -3348,8 +3348,8 @@ def page_backtester():
                 wins = 0
                 trades = 0
                 prog = st.progress(0, text="Simulating trades...")
-                for i in range(len(df) - test_len, len(df) - 5):
-                    prog.progress((i - (len(df)-test_len)) / (test_len - 5), text=f"Simulating Day {i}...")
+                for i in range(len(df) - test_len, len(df) - 3):
+                    prog.progress((i - (len(df)-test_len)) / (test_len - 3), text=f"Simulating Day {i}...")
                     # Slice data up to point i
                     sub_df = df.iloc[:i]
                     sub_prices = sub_df['Close'].tolist()

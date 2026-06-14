@@ -4056,7 +4056,7 @@ def page_prediction():
             bd_html += f'<div style="display:flex; justify-content:space-between; font-size:0.75rem; margin-bottom:5px;"><span style="color:#94a3b8;">{factor}</span><span style="color:{f_col}; font-weight:700;">{state}</span></div>'
 
         # Tamil Summary Logic (Step 3 v3: Professional Upgrade)
-        if "NO TRADE" in today_sig:
+        if "NO TRADE" in today_sig or "HOLD" in v_sig or "NO TRADE" in v_sig:
             if "Vacancy" in today_sig:
                 tamil_summary = "சந்தை தற்போது ஸ்திரத்தன்மையின்றி (Low Volatility) உள்ளது. முக்கியமான மூவ்மென்ட் வரும் வரை காத்திருக்கவும்."
             else:
@@ -4070,7 +4070,7 @@ def page_prediction():
             tamil_summary = "சந்தையின் போக்கு சீராக உள்ளது. தொழில்நுட்ப காரணிகள் சாதகமாக உள்ளன (Institutional Alignment)."
 
         # Determine execution details or N/A
-        if "HOLD" in today_sig or "NO TRADE" in today_sig:
+        if "HOLD" in today_sig or "NO TRADE" in today_sig or "HOLD" in v_sig or "NO TRADE" in v_sig:
             exec_html = f'''
             <div style="font-size:0.85rem; color:#64748b; margin-bottom:12px; font-weight:700; text-transform:uppercase;">Execution Levels</div>
             <div style="text-align:center; padding: 25px 0; color:#94a3b8;">

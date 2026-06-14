@@ -2059,6 +2059,10 @@ def page_prediction():
         symbol = st.session_state.last_sym
         is_intra = "Intraday" in st.session_state.get('last_mode','')
         headlines = st.session_state.get('pred_news_headlines', [])
+        today_sig = pred['today']['signal']
+        timing = st.session_state.get('pred_timing', 'N/A')
+        liq = st.session_state.get('pred_liquidity', 'N/A')
+        rp = st.session_state.get('pred_risk', {})
         
         # 1. LIVE HEADER CARD (Properly Aligned)
         live_price = get_realtime_price(symbol, mapped)
@@ -2280,7 +2284,7 @@ def page_prediction():
             bd_html += f'<div style="display:flex; justify-content:space-between; font-size:0.75rem; margin-bottom:5px;"><span style="color:#94a3b8;">{factor}</span><span style="color:{f_col}; font-weight:700;">{state}</span></div>'
 
         # Tamil Summary Logic (Step 3 v3: Professional Upgrade)
-        if "NO TRADE" in today_sig:
+        if "NO TRADE" in today_sig or "HOLD" in v_sig or "NO TRADE" in v_sig:
             if "Vacancy" in today_sig:
                 tamil_summary = "சந்தை தற்போது ஸ்திரத்தன்மையின்றி (Low Volatility) உள்ளது. முக்கியமான மூவ்மென்ட் வரும் வரை காத்திருக்கவும்."
             else:
@@ -2292,6 +2296,43 @@ def page_prediction():
             tamil_summary = f"ஒரு முக்கியமான பிரேக்அவுட் (Breakout) உறுதி செய்யப்பட்டுள்ளது. பலமான ஏற்றம் அல்லது இறக்கம் எதிர்பார்க்கப்படுகிறது."
         else:
             tamil_summary = "சந்தையின் போக்கு சீராக உள்ளது. தொழில்நுட்ப காரணிகள் சாதகமாக உள்ளன (Institutional Alignment)."
+
+        # Determine execution details or N/A
+        if "HOLD" in today_sig or "NO TRADE" in today_sig or "HOLD" in v_sig or "NO TRADE" in v_sig:
+            exec_html = f'''
+            <div style="font-size:0.85rem; color:#64748b; margin-bottom:12px; font-weight:700; text-transform:uppercase;">Execution Levels</div>
+            <div style="text-align:center; padding: 25px 0; color:#94a3b8;">
+                <div style="font-size:2rem; margin-bottom:5px;">⚖️</div>
+                <div style="font-size:0.9rem; font-weight:700; color:#f59e0b; text-transform:uppercase; letter-spacing:0.5px;">N/A — HOLD POSITION</div>
+                <div style="font-size:0.75rem; color:#64748b; margin-top:6px; line-height:1.4;">சந்தையில் தற்போதைக்கு புதிய வர்த்தகங்கள் (New Trade Entry) தவிர்க்கப்பட வேண்டும்.</div>
+            </div>
+            '''
+        else:
+            qty_label = "Quantity to Buy" if "BUY" in today_sig else "Quantity to Short"
+            exec_html = f'''
+            <div style="font-size:0.85rem; color:#64748b; margin-bottom:12px; font-weight:700; text-transform:uppercase;">Execution Levels</div>
+            <div style="display:flex; justify-content:space-between; margin-bottom:8px;">
+                <span style="color:#94a3b8;">Entry</span>
+                <span style="font-weight:800; color:#f8fafc;">₹{rp.get('entry', 0):,.2f}</span>
+            </div>
+            <div style="display:flex; justify-content:space-between; margin-bottom:8px;">
+                <span style="color:#94a3b8;">Stop Loss</span>
+                <span style="font-weight:800; color:#ef4444;">₹{rp.get('sl', 0):,.2f}</span>
+            </div>
+            <div style="display:flex; justify-content:space-between; margin-bottom:8px;">
+                <span style="color:#94a3b8;">Target</span>
+                <span style="font-weight:800; color:#10b981;">₹{rp.get('target', 0):,.2f}</span>
+            </div>
+            <hr style="border:0.5px solid #334155; margin:10px 0;">
+            <div style="display:flex; justify-content:space-between; font-size:0.8rem;">
+                <span style="color:#64748b;">Risk/Reward</span>
+                <span style="color:#f8fafc; font-weight:700;">{rp.get('risk_reward', '1:2')}</span>
+            </div>
+            <div style="display:flex; justify-content:space-between; font-size:0.8rem; margin-top:4px;">
+                <span style="color:#64748b;">Quantity</span>
+                <span style="color:#38bdf8; font-weight:700;">{rp.get('pos_size', 0)} Shares</span>
+            </div>
+            '''
 
         st.markdown(f'''
             <div style="background: {v_col}10; border: 2px solid {v_col}; padding: 30px; border-radius: 20px; border-left: 10px solid {v_col}; margin-bottom:30px;">
@@ -2312,34 +2353,12 @@ def page_prediction():
                 
                 <div style="display:grid; grid-template-columns: 1.5fr 1fr; gap:25px; align-items:center;">
                     <div>
-                        <h1 style="margin:0; color:{v_col}; font-size: 3.2rem; font-weight: 950; letter-spacing:-1px;">{today_sig}</h1>
+                        <h1 style="margin:0; color:{v_col}; font-size: 3.2rem; font-weight: 950; letter-spacing:-1px;">{v_sig}</h1>
                         <div style="font-size:1.1rem; color:#94a3b8; font-weight:600; margin-top:10px;">{tamil_summary}</div>
                     </div>
                     
                     <div style="background:rgba(0,0,0,0.3); padding:20px; border-radius:15px; border:1px solid rgba(255,255,255,0.05); text-align:left;">
-                        <div style="font-size:0.85rem; color:#64748b; margin-bottom:12px; font-weight:700; text-transform:uppercase;">Execution Levels</div>
-                        <div style="display:flex; justify-content:space-between; margin-bottom:8px;">
-                            <span style="color:#94a3b8;">Entry</span>
-                            <span style="font-weight:800; color:#f8fafc;">₹{rp.get('entry', 0):,.2f}</span>
-                        </div>
-                        <div style="display:flex; justify-content:space-between; margin-bottom:8px;">
-                            <span style="color:#94a3b8;">Stop Loss</span>
-                            <span style="font-weight:800; color:#ef4444;">₹{rp.get('sl', 0):,.2f}</span>
-                        </div>
-                        <div style="display:flex; justify-content:space-between; margin-bottom:8px;">
-                            <span style="color:#94a3b8;">Target</span>
-                            <span style="font-weight:800; color:#10b981;">₹{rp.get('target', 0):,.2f}</span>
-                        </div>
-                        <hr style="border:0.5px solid #334155; margin:10px 0;">
-                        <div style="display:flex; justify-content:space-between; font-size:0.8rem;">
-                            <span style="color:#64748b;">Risk/Reward</span>
-                            <span style="color:#f8fafc; font-weight:700;">1:2</span>
-                        </div>
-                        <div style="display:flex; justify-content:space-between; font-size:0.8rem; margin-top:4px;">
-                            <span style="color:#64748b;">Quantity</span>
-                            <span style="color:#38bdf8; font-weight:700;">{rp.get('pos_size', 0)} Shares</span>
-                        </div>
-                        
+                        {exec_html}
                         <div style="margin-top:20px; padding-top:10px; border-top:1px solid #334155;">
                              <div style="font-size:0.65rem; color:#64748b; margin-bottom:10px; font-weight:700; text-transform:uppercase;">Confidence Breakdown</div>
                              {bd_html}

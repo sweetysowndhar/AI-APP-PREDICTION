@@ -1451,6 +1451,26 @@ class AIEngine:
         
         # SMC (Smart Money Concepts) feature detection
         smc = self.detect_smc_features(df)
+        
+        # Multi-Timeframe SMC: Run SMC detection on each available timeframe
+        mtf_smc = {}  # {timeframe_label: smc_result}
+        primary_tf_label = '1D'  # Default assumption for primary df
+        freq = getattr(df.index, 'freq', None)
+        if freq is not None:
+            freq_str = str(freq)
+            if 'T' in freq_str or 'min' in freq_str: primary_tf_label = '15M'
+            elif 'H' in freq_str: primary_tf_label = '1H'
+        elif intraday: primary_tf_label = '15M'
+        mtf_smc[primary_tf_label] = smc
+        if df_15m is not None and primary_tf_label != '15M':
+            try: mtf_smc['15M'] = self.detect_smc_features(df_15m)
+            except: pass
+        if df_1h is not None and primary_tf_label != '1H':
+            try: mtf_smc['1H'] = self.detect_smc_features(df_1h)
+            except: pass
+        if df_1d is not None and primary_tf_label != '1D':
+            try: mtf_smc['1D'] = self.detect_smc_features(df_1d)
+            except: pass
         current_price = float(df['Close'].iloc[-1])
         
         # 5. Prediction Ensemble
@@ -1502,19 +1522,24 @@ class AIEngine:
             tech_score = main_status['score']
             structure_score = 1.0 if smc['current_trend'] == ("Bullish" if ml_side == 1 else "Bearish") else 0.0
             
-            # Order Block Score
+            # Order Block Score — Search across ALL timeframes for closest OB
             ob_score = 0.0
             closest_ob = None
             closest_ob_dist_pct = 999.0
-            if ml_side == 1:
-                obs = smc['active_bullish_ob']
-            else:
-                obs = smc['active_bearish_ob']
+            ob_timeframe = 'N/A'
             
-            if obs:
+            # Collect all OBs from every timeframe with their tf label
+            all_tf_obs = []  # list of (ob_dict, tf_label)
+            for tf_label, tf_smc in mtf_smc.items():
+                ob_key = 'active_bullish_ob' if ml_side == 1 else 'active_bearish_ob'
+                for ob in tf_smc.get(ob_key, []):
+                    all_tf_obs.append((ob, tf_label))
+            
+            if all_tf_obs:
                 best_ob = None
+                best_tf = None
                 min_dist = float('inf')
-                for ob in obs:
+                for ob, tf_label in all_tf_obs:
                     if current_price < ob['bottom']:
                         dist = ob['bottom'] - current_price
                     elif current_price > ob['top']:
@@ -1524,13 +1549,29 @@ class AIEngine:
                     if dist < min_dist:
                         min_dist = dist
                         best_ob = ob
+                        best_tf = tf_label
                 if best_ob is not None:
                     closest_ob = best_ob
+                    ob_timeframe = best_tf
                     ref = best_ob['top'] if ml_side == 1 else best_ob['bottom']
                     prox = 1.0 if min_dist == 0.0 else max(0.0, 1.0 - min_dist / (ref * 0.02))
                     fresh = max(0.0, 1.0 - (best_ob['age'] * 0.02))
                     ob_score = prox * fresh
                     closest_ob_dist_pct = (min_dist / current_price) * 100.0
+            
+            # Build multi-TF OB summary for display
+            mtf_ob_summary = {}  # {tf_label: {type, count, closest_dist}}
+            for tf_label, tf_smc in mtf_smc.items():
+                bull_obs = tf_smc.get('active_bullish_ob', [])
+                bear_obs = tf_smc.get('active_bearish_ob', [])
+                total = len(bull_obs) + len(bear_obs)
+                if total > 0:
+                    mtf_ob_summary[tf_label] = {
+                        'bullish': len(bull_obs),
+                        'bearish': len(bear_obs),
+                        'total': total,
+                        'trend': tf_smc.get('current_trend', 'Neutral')
+                    }
             
             # FVG Score
             fvg_score = 0.0
@@ -1636,6 +1677,8 @@ class AIEngine:
                     'current_trend': smc['current_trend'],
                     'closest_ob': closest_ob,
                     'closest_ob_dist_pct': closest_ob_dist_pct,
+                    'ob_timeframe': ob_timeframe,
+                    'mtf_ob_summary': mtf_ob_summary,
                     'closest_fvg': closest_fvg,
                     'closest_fvg_dist_pct': closest_fvg_dist_pct,
                     'confluence_detected': stars == 5,
@@ -3935,6 +3978,8 @@ def page_prediction():
         ob_zone = "N/A"
         ob_age_str = "N/A"
         ob_freshness_pct = 0
+        ob_tf_label = smc_info.get('ob_timeframe', 'N/A')
+        mtf_ob_summary = smc_info.get('mtf_ob_summary', {})
         if closest_ob:
             ob_type = f"{closest_ob['type']} Order Block"
             ob_zone = f"{curr}{closest_ob['bottom']:,.2f} - {curr}{closest_ob['top']:,.2f}"
@@ -3981,7 +4026,10 @@ def page_prediction():
 <div style="font-size: 0.7rem; color: #64748b; text-transform: uppercase; font-weight: 800; letter-spacing: 0.5px; margin-bottom: 4px;">Asset / Stock</div>
 <div style="font-size: 1.3rem; font-weight: 900; margin-bottom: 15px; color: #f8fafc;">{symbol}</div>
 <div style="font-size: 0.7rem; color: #64748b; text-transform: uppercase; font-weight: 800; letter-spacing: 0.5px; margin-bottom: 4px;">Order Block Type</div>
-<div style="font-size: 1.1rem; font-weight: 700; color: {'#10b981' if closest_ob and closest_ob['type'] == 'Bullish' else '#ef4444' if closest_ob else '#94a3b8'}; margin-bottom: 15px;">{ob_type}</div>
+<div style="display: flex; align-items: center; gap: 8px; margin-bottom: 15px;">
+<span style="font-size: 1.1rem; font-weight: 700; color: {'#10b981' if closest_ob and closest_ob['type'] == 'Bullish' else '#ef4444' if closest_ob else '#94a3b8'};">{ob_type}</span>
+<span style="background: {'#6366f1' if ob_tf_label != 'N/A' else '#334155'}; color: white; padding: 2px 8px; border-radius: 6px; font-size: 0.65rem; font-weight: 800; letter-spacing: 0.5px;">{ob_tf_label}</span>
+</div>
 <div style="font-size: 0.7rem; color: #64748b; text-transform: uppercase; font-weight: 800; letter-spacing: 0.5px; margin-bottom: 4px;">Zone Range</div>
 <div style="font-size: 1.1rem; font-weight: 700; margin-bottom: 15px; font-family: monospace; color: #e2e8f0;">{ob_zone}</div>
 <div style="font-size: 0.7rem; color: #64748b; text-transform: uppercase; font-weight: 800; letter-spacing: 0.5px; margin-bottom: 4px;">Distance to OB Zone</div>
@@ -4016,6 +4064,39 @@ def page_prediction():
 </div>
 </div>
 </div>
+</div>''', unsafe_allow_html=True)
+
+        # Multi-Timeframe OB Summary Row
+        if mtf_ob_summary:
+            tf_order = ['15M', '1H', '1D']
+            tf_cards_html = ""
+            for tf in tf_order:
+                if tf in mtf_ob_summary:
+                    info = mtf_ob_summary[tf]
+                    trend_c = '#10b981' if info['trend'] == 'Bullish' else '#ef4444' if info['trend'] == 'Bearish' else '#f59e0b'
+                    is_active_tf = (tf == ob_tf_label)
+                    border_style = f"border: 2px solid {trend_c};" if is_active_tf else "border: 1px solid #334155;"
+                    glow = f"box-shadow: 0 0 12px {trend_c}40;" if is_active_tf else ""
+                    tf_cards_html += f'''
+                    <div style="background: rgba(255,255,255,0.03); {border_style} {glow} border-radius: 12px; padding: 12px 16px; text-align: center; min-width: 120px;">
+                        <div style="font-size: 0.65rem; color: #64748b; text-transform: uppercase; font-weight: 800; margin-bottom: 6px;">{tf} Timeframe</div>
+                        <div style="font-size: 1.4rem; font-weight: 900; color: {trend_c}; margin-bottom: 4px;">{info['total']}</div>
+                        <div style="font-size: 0.7rem; color: #94a3b8; margin-bottom: 2px;">🟢 {info['bullish']} Bull  ·  🔴 {info['bearish']} Bear</div>
+                        <div style="font-size: 0.7rem; font-weight: 700; color: {trend_c}; text-transform: uppercase;">{info['trend']} Trend</div>
+                    </div>'''
+                else:
+                    tf_cards_html += f'''
+                    <div style="background: rgba(255,255,255,0.02); border: 1px dashed #334155; border-radius: 12px; padding: 12px 16px; text-align: center; min-width: 120px; opacity: 0.5;">
+                        <div style="font-size: 0.65rem; color: #64748b; text-transform: uppercase; font-weight: 800; margin-bottom: 6px;">{tf} Timeframe</div>
+                        <div style="font-size: 1.4rem; font-weight: 900; color: #334155; margin-bottom: 4px;">—</div>
+                        <div style="font-size: 0.7rem; color: #475569;">No Active OB</div>
+                    </div>'''
+            st.markdown(f'''<div class="premium-card" style="margin-bottom: 25px; color: #f8fafc;">
+<div style="font-size: 0.9rem; font-weight: 800; color: #a78bfa; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 15px; display: flex; align-items: center; gap: 8px;">⏱️ Multi-Timeframe Order Block Map</div>
+<div style="display: flex; gap: 15px; justify-content: center; flex-wrap: wrap;">
+{tf_cards_html}
+</div>
+<div style="font-size: 0.7rem; color: #64748b; margin-top: 12px; text-align: center;">Highlighted card = Timeframe where the closest Order Block was detected. OB from higher timeframes carry more institutional weight.</div>
 </div>''', unsafe_allow_html=True)
 
         # 4. Sentiment Catalyst Summary (India vs Global)

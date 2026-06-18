@@ -37,7 +37,15 @@ FIB_LEVELS = [0.236, 0.382, 0.5, 0.618, 0.786]
 # Weight contributed to overall confidence (10% of total)
 FIB_WEIGHT = 0.10
 
-from prediction_tracker import save_prediction, load_history, load_advanced_stats, auto_verify_signals, load_options_stats
+try:
+    from prediction_tracker import save_prediction, load_history, load_advanced_stats, auto_verify_signals, load_options_stats
+except ImportError:
+    # Safe fallback stubs - app will work even if tracker module is outdated
+    def save_prediction(data): pass
+    def load_history(): return []
+    def load_advanced_stats(): return {"win_rate": 0.0, "total": 0, "avg_profit": 0.0, "avg_loss": 0.0, "profit_factor": 0.0, "rr_actual": 0.0}
+    def auto_verify_signals(fn): pass
+    def load_options_stats(): return None
 
 warnings.filterwarnings('ignore')
 

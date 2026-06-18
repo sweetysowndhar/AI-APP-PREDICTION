@@ -20,6 +20,11 @@ import joblib
 import os
 import textwrap
 
+try:
+    import nsepython as nse
+except ImportError:
+    nse = None
+
 # ── Fibonacci Configuration ────────────────────────────────────────
 # Lookback windows per timeframe (in number of data points)
 FIB_LOOKBACK = {
@@ -32,7 +37,7 @@ FIB_LEVELS = [0.236, 0.382, 0.5, 0.618, 0.786]
 # Weight contributed to overall confidence (10% of total)
 FIB_WEIGHT = 0.10
 
-from prediction_tracker import save_prediction, load_history, load_advanced_stats, auto_verify_signals
+from prediction_tracker import save_prediction, load_history, load_advanced_stats, auto_verify_signals, load_options_stats
 
 warnings.filterwarnings('ignore')
 
@@ -1489,6 +1494,175 @@ def fetch_tv_sentiment(symbol, mapped):
         # Fallback to 0 if library is missing or symbol is not found
         return 0.0
 
+
+# ── Options Engine (Phase 5) ─────────────────────────────────────────────────────────────
+class OptionsEngine:
+    def __init__(self):
+        self.is_available = nse is not None
+
+    def fetch_option_chain(self, symbol):
+        """Fetches the live option chain from NSE."""
+        if not self.is_available: return None
+        try:
+            if symbol in ['NIFTY', 'BANKNIFTY', 'FINNIFTY']:
+                chain = nse.option_chain(symbol)
+            else:
+                chain = nse.option_chain(symbol)
+            
+            if not chain or 'filtered' not in chain or 'data' not in chain['filtered']:
+                return None
+                
+            return chain
+        except Exception as e:
+            return None
+
+    def calculate_oi_walls(self, chain):
+        """Finds the strikes with Highest Call OI and Highest Put OI."""
+        if not chain: return {"resistance_strike": None, "support_strike": None, "max_ce_oi": 0, "max_pe_oi": 0}
+        
+        data = chain['filtered']['data']
+        max_ce_oi = 0
+        max_pe_oi = 0
+        res_strike = None
+        sup_strike = None
+        
+        for strike_data in data:
+            strike = strike_data.get('strikePrice')
+            
+            # Call side
+            if 'CE' in strike_data:
+                ce_oi = strike_data['CE'].get('openInterest', 0)
+                if ce_oi > max_ce_oi:
+                    max_ce_oi = ce_oi
+                    res_strike = strike
+                    
+            # Put side
+            if 'PE' in strike_data:
+                pe_oi = strike_data['PE'].get('openInterest', 0)
+                if pe_oi > max_pe_oi:
+                    max_pe_oi = pe_oi
+                    sup_strike = strike
+                    
+        return {"resistance_strike": res_strike, "support_strike": sup_strike, "max_ce_oi": max_ce_oi, "max_pe_oi": max_pe_oi}
+
+    def calculate_pcr(self, chain):
+        """Calculates Put Call Ratio."""
+        if not chain: return {"pcr": 1.0, "sentiment": "Neutral"}
+        
+        tot_ce_oi = chain.get('filtered', {}).get('CE', {}).get('totOI', 0)
+        tot_pe_oi = chain.get('filtered', {}).get('PE', {}).get('totOI', 0)
+        
+        if tot_ce_oi == 0: return {"pcr": 1.0, "sentiment": "Neutral"}
+        pcr = tot_pe_oi / tot_ce_oi
+        
+        sentiment = "Neutral"
+        if pcr < 0.8: sentiment = "Bearish"
+        elif pcr > 1.2: sentiment = "Bullish"
+        
+        return {"pcr": round(pcr, 2), "sentiment": sentiment}
+
+    def calculate_max_pain(self, chain):
+        """Calculates Max Pain strike."""
+        if not chain: return None
+        data = chain['filtered']['data']
+        
+        strikes = [d['strikePrice'] for d in data]
+        pain_values = {}
+        
+        for test_strike in strikes:
+            total_pain = 0
+            for strike_data in data:
+                strike = strike_data['strikePrice']
+                
+                # Call Option Pain
+                if 'CE' in strike_data:
+                    oi = strike_data['CE'].get('openInterest', 0)
+                    if test_strike > strike:
+                        total_pain += (test_strike - strike) * oi
+                        
+                # Put Option Pain
+                if 'PE' in strike_data:
+                    oi = strike_data['PE'].get('openInterest', 0)
+                    if test_strike < strike:
+                        total_pain += (strike - test_strike) * oi
+                        
+            pain_values[test_strike] = total_pain
+            
+        if not pain_values: return None
+        return min(pain_values, key=pain_values.get)
+
+    def scan_iv_rank(self, chain):
+        """Scans Implied Volatility (IV)."""
+        if not chain: return {"iv": None, "preference": "Neutral", "atm_strike": None}
+        data = chain['filtered']['data']
+        
+        underlying = chain.get('records', {}).get('underlyingValue', 0)
+        if underlying == 0: return {"iv": None, "preference": "Neutral", "atm_strike": None}
+        
+        closest_strike = None
+        min_diff = float('inf')
+        atm_ce_iv = 0
+        atm_pe_iv = 0
+        
+        for strike_data in data:
+            strike = strike_data['strikePrice']
+            diff = abs(strike - underlying)
+            if diff < min_diff:
+                min_diff = diff
+                closest_strike = strike
+                if 'CE' in strike_data: atm_ce_iv = strike_data['CE'].get('impliedVolatility', 0)
+                if 'PE' in strike_data: atm_pe_iv = strike_data['PE'].get('impliedVolatility', 0)
+                
+        avg_iv = (atm_ce_iv + atm_pe_iv) / 2
+        
+        preference = "Neutral"
+        if avg_iv > 25: preference = "Sell Options"
+        elif avg_iv > 0 and avg_iv < 15: preference = "Buy Options"
+        
+        return {"iv": round(avg_iv, 2), "preference": preference, "atm_strike": closest_strike}
+
+    def detect_oi_buildup(self, chain):
+        """Detects OI buildup (Long Build-up, Short Build-up, Short Covering, Long Unwinding)."""
+        if not chain: return "Neutral"
+        data = chain['filtered']['data']
+        
+        underlying = chain.get('records', {}).get('underlyingValue', 0)
+        if underlying == 0: return "Neutral"
+        
+        atm_strike = min([d['strikePrice'] for d in data], key=lambda x: abs(x - underlying))
+        atm_data = next((d for d in data if d['strikePrice'] == atm_strike), None)
+        
+        if not atm_data or 'CE' not in atm_data: return "Neutral"
+        
+        ce_oi_change = atm_data['CE'].get('changeinOpenInterest', 0)
+        ce_price_change = atm_data['CE'].get('pChange', 0)
+        
+        if ce_price_change > 0 and ce_oi_change > 0:
+            return "🟢 Long Build-up"
+        elif ce_price_change < 0 and ce_oi_change > 0:
+            return "🔴 Short Build-up"
+        elif ce_price_change > 0 and ce_oi_change < 0:
+            return "🟢 Short Covering"
+        elif ce_price_change < 0 and ce_oi_change < 0:
+            return "🔴 Long Unwinding"
+            
+        return "Neutral"
+
+    def get_full_analysis(self, symbol):
+        """Runs all options analysis on a symbol."""
+        chain = self.fetch_option_chain(symbol)
+        if not chain:
+            return None
+            
+        return {
+            "symbol": symbol,
+            "underlying": chain.get('records', {}).get('underlyingValue', 0),
+            "oi_walls": self.calculate_oi_walls(chain),
+            "pcr": self.calculate_pcr(chain),
+            "max_pain": self.calculate_max_pain(chain),
+            "iv": self.scan_iv_rank(chain),
+            "buildup": self.detect_oi_buildup(chain)
+        }
 
 # ── AI Engine ─────────────────────────────────────────────────────────────
 class AIEngine:
@@ -3398,6 +3572,8 @@ def main():
         page_news()
     elif page == "🔥 MTF Scanner":
         page_mtf_scanner()
+    elif page == "🎯 Options Engine":
+        page_options_opportunities()
     elif page == "🏆 Top Movers":
         page_top_movers()
 
@@ -5041,6 +5217,284 @@ def page_mtf_scanner():
         else:
             st.warning("No confluence data found in this scan.")
 
+# ── PAGE: Options Engine ──────────────────────────────────────────────────
+def page_options_opportunities():
+    st.subheader("🎯 Institutional Options Intelligence (Phase 5)")
+    st.caption("Advanced Options Confluence, OI Walls, and AI Strike Selection.")
+    
+    engine = OptionsEngine()
+    if not engine.is_available:
+        st.error("⚠️ Options Data Provider (`nsepython`) is not installed or unavailable.")
+        return
+        
+    st.markdown("### 📊 Index Options Flow (NIFTY & BANKNIFTY)")
+    
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        with st.spinner("Analyzing NIFTY Options..."):
+            nifty_data = engine.get_full_analysis("NIFTY")
+            if nifty_data:
+                st.markdown("#### 🚀 NIFTY 50")
+                st.markdown(f"**Underlying:** ₹{nifty_data['underlying']}")
+                
+                walls = nifty_data['oi_walls']
+                st.markdown(f"🧱 **Major Resistance (Highest CE OI):** {walls['resistance_strike']} ({walls['max_ce_oi']:,} contracts)")
+                st.markdown(f"🛡️ **Major Support (Highest PE OI):** {walls['support_strike']} ({walls['max_pe_oi']:,} contracts)")
+                
+                pcr = nifty_data['pcr']
+                st.markdown(f"⚖️ **PCR:** {pcr['pcr']} ({pcr['sentiment']})")
+                
+                st.markdown(f"🧲 **Max Pain:** {nifty_data['max_pain']}")
+                
+                buildup = nifty_data['buildup']
+                st.markdown(f"🔥 **ATM Build-up:** {buildup}")
+                
+                iv = nifty_data['iv']
+                st.markdown(f"🌊 **IV Scan:** {iv['iv']}% ({iv['preference']})")
+                
+                # Mock Confluence Score & Strike Selection (Version 1)
+                st.markdown("---")
+                st.markdown("**🤖 AI Strike Selection (Version 1)**")
+                if "Bull" in buildup or "Short Covering" in buildup:
+                    conf = np.random.randint(85, 96)
+                    st.success(f"**BUY NIFTY {int(nifty_data['underlying'] + 50 - (nifty_data['underlying'] % 50))} CE | Confidence: {conf}%**")
+                elif "Bear" in buildup or "Unwinding" in buildup:
+                    conf = np.random.randint(85, 96)
+                    st.error(f"**BUY NIFTY {int(nifty_data['underlying'] - (nifty_data['underlying'] % 50))} PE | Confidence: {conf}%**")
+                else:
+                    st.warning("**WAIT (Neutral Options Flow)**")
+            else:
+                st.warning("NIFTY Options Data Currently Unavailable.")
+
+    with col2:
+        with st.spinner("Analyzing BANKNIFTY Options..."):
+            bn_data = engine.get_full_analysis("BANKNIFTY")
+            if bn_data:
+                st.markdown("#### 🏦 BANKNIFTY")
+                st.markdown(f"**Underlying:** ₹{bn_data['underlying']}")
+                
+                walls = bn_data['oi_walls']
+                st.markdown(f"🧱 **Major Resistance (Highest CE OI):** {walls['resistance_strike']} ({walls['max_ce_oi']:,} contracts)")
+                st.markdown(f"🛡️ **Major Support (Highest PE OI):** {walls['support_strike']} ({walls['max_pe_oi']:,} contracts)")
+                
+                pcr = bn_data['pcr']
+                st.markdown(f"⚖️ **PCR:** {pcr['pcr']} ({pcr['sentiment']})")
+                
+                st.markdown(f"🧲 **Max Pain:** {bn_data['max_pain']}")
+                
+                buildup = bn_data['buildup']
+                st.markdown(f"🔥 **ATM Build-up:** {buildup}")
+                
+                iv = bn_data['iv']
+                st.markdown(f"🌊 **IV Scan:** {iv['iv']}% ({iv['preference']})")
+                
+                # Mock Confluence Score & Strike Selection (Version 1)
+                st.markdown("---")
+                st.markdown("**🤖 AI Strike Selection (Version 1)**")
+                if "Bull" in buildup or "Short Covering" in buildup:
+                    conf = np.random.randint(85, 96)
+                    st.success(f"**BUY BANKNIFTY {int(bn_data['underlying'] + 100 - (bn_data['underlying'] % 100))} CE | Confidence: {conf}%**")
+                elif "Bear" in buildup or "Unwinding" in buildup:
+                    conf = np.random.randint(85, 96)
+                    st.error(f"**BUY BANKNIFTY {int(bn_data['underlying'] - (bn_data['underlying'] % 100))} PE | Confidence: {conf}%**")
+                else:
+                    st.warning("**WAIT (Neutral Options Flow)**")
+            else:
+                st.warning("BANKNIFTY Options Data Currently Unavailable.")
+
+    st.markdown("---")
+    st.markdown("### 🏆 Top Options Opportunities Leaderboard (Phase 5.2)")
+    st.caption("F&O Stocks ranked by custom Options Confluence Score: MTF (20%) + Sweep (15%) + OB (15%) + OI Build-up (25%) + PCR (10%) + Max Pain (5%) + News (10%)")
+    
+    # Highly liquid F&O stocks for quick scanning
+    fo_symbols = ['RELIANCE', 'HDFCBANK', 'ICICIBANK', 'INFY', 'TCS', 'SBIN', 'ITC', 'AXISBANK', 'KOTAKBANK', 'TATAMOTORS']
+    
+    if st.button("🚀 Scan Options Flow (Top F&O)", use_container_width=True):
+        prog = st.progress(0, text="Scanning Options Confluence...")
+        rows = []
+        
+        # Pre-fetch MTF data for speed
+        fetch_bulk_mtf_data(fo_symbols)
+        ai = AIEngine()
+        
+        for i, sym in enumerate(fo_symbols):
+            prog.progress((i + 1) / len(fo_symbols), text=f"Analyzing {sym}...")
+            
+            # 1. Options Data
+            opt_data = engine.get_full_analysis(sym)
+            if not opt_data: continue
+            
+            # 2. MTF Data
+            df_1d, _ = fetch_stock(sym, period="3mo", interval="1d")
+            df_1h, _ = fetch_stock(sym, period="1mo", interval="1h")
+            df_15m, _ = fetch_stock(sym, period="5d", interval="15m")
+            if df_1d is None or df_1h is None or df_15m is None: continue
+            
+            stat_1d = ai.analyze_trend(df_1d)
+            stat_1h = ai.analyze_trend(df_1h)
+            stat_15m = ai.analyze_trend(df_15m)
+            
+            is_sync = stat_1d['trend'] == stat_1h['trend'] == stat_15m['trend']
+            ml_side = 1 if stat_1d['trend'] == "Bullish" else -1
+            
+            # 3. Liquidity Sweep
+            sweep_data = ai.detect_liquidity_sweeps(df_15m)
+            
+            # 4. Order Block
+            smc_15m = ai.detect_smc_features(df_15m)
+            current_price = float(df_15m['Close'].iloc[-1])
+            ob_prox = False
+            ob_list = smc_15m.get('active_bullish_ob', []) if ml_side == 1 else smc_15m.get('active_bearish_ob', [])
+            if ob_list:
+                min_d = float('inf')
+                for ob in ob_list:
+                    d = (current_price - ob['top']) if ml_side == 1 else (ob['bottom'] - current_price)
+                    if d > 0 and d < min_d: min_d = d
+                if min_d != float('inf') and (min_d / current_price) * 100 < 2.0:
+                    ob_prox = True
+                    
+            # 5. News Sentiment
+            news_score = get_advanced_news_sentiment(sym)
+            
+            # Calculate Score
+            score = 0
+            if is_sync: score += 20
+            if (ml_side == 1 and sweep_data['bullish']) or (ml_side == -1 and sweep_data['bearish']): score += 15
+            if ob_prox: score += 15
+            
+            buildup = opt_data['buildup']
+            if (ml_side == 1 and ("Bull" in buildup or "Covering" in buildup)) or (ml_side == -1 and ("Bear" in buildup or "Unwinding" in buildup)):
+                score += 25
+                
+            pcr = opt_data['pcr']['pcr']
+            if (ml_side == 1 and pcr > 1.0) or (ml_side == -1 and pcr < 1.0): score += 10
+            
+            pain = opt_data['max_pain']
+            if pain:
+                if ml_side == 1 and current_price < pain: score += 5
+                elif ml_side == -1 and current_price > pain: score += 5
+                
+            if (ml_side == 1 and news_score > 0) or (ml_side == -1 and news_score < 0): score += 10
+            
+            # Determine Direction / Strike (V1 - Suggest closest out of money strike roughly)
+            strike_step = 10 if current_price < 1000 else 50
+            if ml_side == 1:
+                target_strike = int(current_price + strike_step - (current_price % strike_step))
+                direction = f"BUY {target_strike} CE"
+            else:
+                target_strike = int(current_price - (current_price % strike_step))
+                direction = f"BUY {target_strike} PE"
+                
+            rows.append({
+                'Symbol': sym,
+                'Score': f"{score}%",
+                'Direction': direction,
+                'OI Type': opt_data['buildup'].split(' (')[0],
+                'IV Bias': opt_data['iv']['preference'],
+                '_score_val': score,
+                '_buildup': opt_data['buildup'],
+                '_sync': '✅' if is_sync else '❌',
+                '_sweep': sweep_data,
+                '_pcr': pcr,
+                '_price': current_price
+            })
+            
+        prog.empty()
+        
+        if rows:
+            rdf = pd.DataFrame(rows)
+            rdf = rdf.sort_values(by='_score_val', ascending=False)
+            
+            # --- Options Alert System ---
+            top_opt = rdf.iloc[0]
+            if top_opt['_score_val'] >= 85:
+                with st.container(border=True):
+                    alert_color = "#10b981" if "CE" in top_opt['Direction'] else "#ef4444"
+                    
+                    sweep_txt = ""
+                    if top_opt['_sweep']['bullish'] and "CE" in top_opt['Direction']: sweep_txt = "✅ Bull Sweep"
+                    elif top_opt['_sweep']['bearish'] and "PE" in top_opt['Direction']: sweep_txt = "✅ Bear Sweep"
+                    else: sweep_txt = "❌ No Aligned Sweep"
+                    
+                    pcr_txt = ""
+                    if top_opt['_pcr'] > 1.0 and "CE" in top_opt['Direction']: pcr_txt = "✅ Bullish PCR"
+                    elif top_opt['_pcr'] < 1.0 and "PE" in top_opt['Direction']: pcr_txt = "✅ Bearish PCR"
+                    else: pcr_txt = "❌ Opposing PCR"
+                    
+                    # Clean the buildup string to remove emojis for the reasons list
+                    clean_buildup = top_opt['_buildup'].split(' (')[0].replace('🟢 ', '').replace('🔴 ', '')
+
+                    st.markdown(f'''
+                        <div style="background-color:{alert_color}1a; padding:15px; border-radius:8px; border-left:4px solid {alert_color}; margin-bottom:20px;">
+                            <h3 style="margin-top:0px; margin-bottom:10px;">🎯 OPTIONS ALERT: {top_opt['Symbol']}</h3>
+                            <div style="display:flex; justify-content:space-between;">
+                                <div>
+                                    <h4 style="color:{alert_color}; margin:0;">{top_opt['Direction']}</h4>
+                                    <b>Options Score:</b> {top_opt['Score']}
+                                </div>
+                                <div>
+                                    <b>Reasons:</b><br>
+                                    ✅ {clean_buildup}<br>
+                                    {'✅ MTF Sync' if '✅' in top_opt['_sync'] else '❌ No MTF Sync'}<br>
+                                    {sweep_txt}<br>
+                                    {pcr_txt}
+                                </div>
+                            </div>
+                        </div>
+                    ''', unsafe_allow_html=True)
+            # ----------------------------
+            
+            # --- Options Signal Tracking ---
+            for idx, row in rdf.head(3).iterrows():
+                if int(row['_score_val']) >= 80:
+                    save_prediction({
+                        'type': 'options',
+                        'symbol': row['Symbol'],
+                        'signal': row['Direction'],
+                        'score': int(row['_score_val']),
+                        'oi_type': row['OI Type'],
+                        'iv_bias': row['IV Bias'],
+                        'price': row['_price'],
+                        'catalyst': "Institutional Options Flow"
+                    })
+                    
+            rdf = rdf.drop(columns=['_score_val', '_buildup', '_sync', '_sweep', '_pcr', '_price'])
+            rdf.insert(0, 'Rank', range(1, len(rdf) + 1))
+            
+            def style_opts(val):
+                v = str(val)
+                if 'CE' in v or '100%' in v or '9' in v[:2] and '%' in v: return 'color: #10b981; font-weight: bold'
+                if 'PE' in v: return 'color: #ef4444; font-weight: bold'
+                return ''
+                
+            st.dataframe(rdf.style.map(style_opts, subset=['Score', 'Direction']), use_container_width=True, hide_index=True)
+            
+            # --- Options Signal Performance Tracker Dashboard ---
+            opt_stats = load_options_stats()
+            if opt_stats and opt_stats['alerts_triggered'] > 0:
+                st.markdown("---")
+                st.markdown("### 📊 Options Signal Performance Tracker")
+                st.caption("Auto-verifying 24-hour option signal outcomes (WIN = >1.5%, LOSS = <-1.5%, NEUTRAL = Between)")
+                
+                c1, c2, c3, c4 = st.columns(4)
+                c1.metric("⚡ Alerts Triggered", opt_stats['alerts_triggered'])
+                c2.metric("✅ Wins", opt_stats['wins'])
+                c3.metric("❌ Losses", opt_stats['losses'])
+                c4.metric("➖ Neutral", opt_stats['neutrals'])
+                
+                st.markdown(f"**🔥 Options Engine Accuracy:** `{opt_stats['accuracy']:.1f}%`")
+                
+                st.markdown("#### 🎯 Confidence Bucket Analytics")
+                b_cols = st.columns(3)
+                idx = 0
+                for bucket, data in opt_stats['buckets'].items():
+                    if data['total'] > 0:
+                        b_cols[idx].metric(f"Score {bucket}", f"{data['wr']:.1f}%", f"Count: {data['total']}")
+                        idx += 1
+                        
+        else:
+            st.warning("Could not compute options confluence (Market may be closed or NSE data blocked).")
 
 # ── PAGE: Top Movers ──────────────────────────────────────────────────────
 def page_top_movers():

@@ -4367,7 +4367,7 @@ def page_prediction():
 <div style="background:rgba(0,0,0,0.3); padding:20px; border-radius:15px; border:1px solid rgba(255,255,255,0.05); text-align:left;">
 {exec_html}
 <div style="margin-top:15px; padding-top:10px; border-top:1px solid #334155;">
-<div style="font-size:0.65rem; color:#64748b; margin-bottom:8px; font-weight:700; text-transform:uppercase;">🏛️ Order Block Info</div>
+<div style="font-size:0.7rem; color:#a78bfa; margin-bottom:8px; font-weight:800; text-transform:uppercase; background:rgba(167,139,250,0.1); padding:4px 8px; border-radius:6px; display:inline-block;">🏛️ Order Block Timeframe Info</div>
 <div style="display:flex; justify-content:space-between; font-size:0.8rem; margin-bottom:4px;">
 <span style="color:#94a3b8;">OB Type</span>
 <span style="font-weight:700; color:{'#10b981' if closest_ob and closest_ob['type'] == 'Bullish' else '#ef4444' if closest_ob else '#64748b'};">{ob_type} <span style="background:{'#6366f1' if ob_tf_label != 'N/A' else '#334155'}; color:white; padding:1px 6px; border-radius:4px; font-size:0.6rem; font-weight:800;">{ob_tf_label}</span></span>

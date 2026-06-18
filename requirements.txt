@@ -9,4 +9,4 @@ beautifulsoup4
 scipy
 tradingview-ta
 joblib
-# Trigger rebuild to clear Streamlit Community Cloud cache: 2026-06-12
+# Trigger rebuild to clear Streamlit Community Cloud cache: 2026-06-18

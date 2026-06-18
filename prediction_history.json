@@ -1,5 +1,16 @@
 [
     {
+        "symbol": "TATASILVER",
+        "signal": "NO TRADE (Low Confidence)",
+        "confidence": 0.3587,
+        "price": 23.47,
+        "sl": 24.1741,
+        "target": 22.061799999999998,
+        "timestamp": "2026-06-18 12:18:48",
+        "catalyst": "India: Internal Governance Scrutiny: \"Nifty 50, Sensex prediction today: Check how Indian stock market is expecte...\" | Global: Positive Regulatory Support: \"Federal Reserve holds interest rates steady but leaves door open to hike...\"",
+        "correct": null
+    },
+    {
         "symbol": "SBIN",
         "signal": "NO TRADE (Low Confidence)",
         "confidence": 0.2694,

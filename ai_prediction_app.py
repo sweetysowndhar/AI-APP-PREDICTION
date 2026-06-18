@@ -848,6 +848,66 @@ def get_realtime_price(symbol, mapped):
         pass
     return None
 
+@st.cache_data(ttl=900)
+def fetch_bulk_mtf_data(symbols):
+    """
+    Bulk downloads 1D, 1H, and 15m data for a list of symbols simultaneously.
+    Returns: dict of {symbol: {'1d': df, '1h': df, '15m': df}}
+    """
+    if not symbols: return {}
+    
+    # Map symbols to Yahoo Finance format
+    mapped_syms = []
+    sym_map = {}
+    for s in symbols:
+        mapped = STOCK_MAP.get(s, s)
+        mapped_syms.append(mapped)
+        sym_map[mapped] = s
+    
+    tickers_str = " ".join(mapped_syms)
+    
+    # Download 1D
+    try:
+        df_1d = yf.download(tickers_str, period="60d", interval="1d", group_by="ticker", threads=True, progress=False)
+    except:
+        df_1d = pd.DataFrame()
+        
+    # Download 1H
+    try:
+        df_1h = yf.download(tickers_str, period="20d", interval="1h", group_by="ticker", threads=True, progress=False)
+    except:
+        df_1h = pd.DataFrame()
+        
+    # Download 15m
+    try:
+        df_15m = yf.download(tickers_str, period="5d", interval="15m", group_by="ticker", threads=True, progress=False)
+    except:
+        df_15m = pd.DataFrame()
+    
+    results = {}
+    for mapped in mapped_syms:
+        sym = sym_map[mapped]
+        results[sym] = {'1d': None, '1h': None, '15m': None}
+        
+        # If multiple symbols are requested, columns are MultiIndex (Ticker, Open/High...)
+        if len(mapped_syms) > 1:
+            if mapped in df_1d.columns.levels[0]:
+                d1 = df_1d[mapped].dropna(how='all')
+                if not d1.empty: results[sym]['1d'] = d1
+            if mapped in df_1h.columns.levels[0]:
+                h1 = df_1h[mapped].dropna(how='all')
+                if not h1.empty: results[sym]['1h'] = h1
+            if mapped in df_15m.columns.levels[0]:
+                m15 = df_15m[mapped].dropna(how='all')
+                if not m15.empty: results[sym]['15m'] = m15
+        else:
+            # Single symbol returns standard columns
+            if not df_1d.empty: results[sym]['1d'] = df_1d.dropna(how='all')
+            if not df_1h.empty: results[sym]['1h'] = df_1h.dropna(how='all')
+            if not df_15m.empty: results[sym]['15m'] = df_15m.dropna(how='all')
+            
+    return results
+
 def get_price_info(symbol, days=5):
     """Get current price, change, change% for a symbol."""
     df, mapped = fetch_stock(symbol, days)
@@ -984,25 +1044,218 @@ def fetch_global_news():
         except: continue
     return all_items
 
-# ── Sentiment ─────────────────────────────────────────────────────────────
-POS_WORDS = ['rally','gain','surge','bullish','record','high','jump','soar','beat',
-             'outperform','buy','upgrade','profit','growth','boom','recover','strong','rise','up']
-NEG_WORDS = ['fall','drop','crash','bearish','low','plunge','miss','sell','downgrade',
-             'loss','decline','weak','cut','fear','risk','slump','down','tank','tumble']
+# ── AI News Intelligence Engine ──────────────────────────────────────────
+# Weighted Sentiment Keywords (High Impact = ±2, Medium = ±1)
+POS_WORDS_HIGH = ['record', 'surge', 'buyback', 'beat', 'breakout', 'boom', 'all-time-high', 'dividend',
+                  'blockbuster', 'outperform', 'massive', 'soaring', 'acquisition', 'upgrade',
+                  'debt-free', 'profit-growth', 'multi-bagger', 'rally']
+POS_WORDS_MED = ['gain', 'bullish', 'profit', 'growth', 'recover', 'strong', 'rise', 'up',
+                 'buy', 'high', 'jump', 'soar', 'positive', 'improve', 'expand', 'upside',
+                 'optimistic', 'momentum', 'stable', 'accumulate', 'support', 'rebound',
+                 'margin', 'revenue', 'inflow', 'bullrun', 'approval', 'innovation',
+                 'partnership', 'contract', 'order-win', 'capex']
+NEG_WORDS_HIGH = ['crash', 'fraud', 'default', 'bankruptcy', 'scam', 'ban', 'penalty',
+                  'downgrade', 'plunge', 'collapse', 'crisis', 'investigation', 'npa',
+                  'writeoff', 'shutdown', 'warning', 'layoff', 'breach']
+NEG_WORDS_MED = ['fall', 'drop', 'bearish', 'miss', 'sell', 'loss', 'decline', 'weak',
+                 'cut', 'fear', 'risk', 'slump', 'down', 'tank', 'tumble', 'low',
+                 'outflow', 'negative', 'pressure', 'concern', 'volatile', 'uncertainty',
+                 'inflation', 'debt', 'delay', 'slowdown', 'correction', 'resistance',
+                 'selling', 'caution', 'dip']
+
+# Backward compatible flat lists
+POS_WORDS = POS_WORDS_HIGH + POS_WORDS_MED
+NEG_WORDS = NEG_WORDS_HIGH + NEG_WORDS_MED
 
 # Catalyst Categories (Expanded for better 'Reasoning')
 CATALYSTS = {
-    'Earnings & Growth': ['dividend', 'earnings', 'profit', 'revenue', 'income', 'growth', 'beat', 'margin', 'sales', 'eps', 'guidance', 'upside'],
-    'Deals & Orders': ['merger', 'acquisition', 'deal', 'partnership', 'contract', 'order', 'agreement', 'tender', 'jv', 'outperform', 'collaboration'],
-    'Policy & Govt': ['policy', 'regulation', 'tax', 'hike', 'cut', 'budget', 'rbi', 'sebi', 'government', 'fed', 'interest', 'reserve', 'subsidy'],
-    'Market Risk': ['loss', 'debt', 'default', 'scam', 'fraud', 'investigation', 'penalty', 'crisis', 'downgrade', 'fii-selling', 'inflation', 'war', 'geopolitical'],
+    'Earnings & Growth': ['dividend', 'earnings', 'profit', 'revenue', 'income', 'growth', 'beat', 'margin', 'sales', 'eps', 'guidance', 'upside', 'quarterly', 'q1', 'q2', 'q3', 'q4', 'net-income', 'topline', 'bottomline'],
+    'Deals & Orders': ['merger', 'acquisition', 'deal', 'partnership', 'contract', 'order', 'agreement', 'tender', 'jv', 'outperform', 'collaboration', 'mou', 'joint-venture'],
+    'Policy & Govt': ['policy', 'regulation', 'tax', 'hike', 'cut', 'budget', 'rbi', 'sebi', 'government', 'fed', 'interest', 'reserve', 'subsidy', 'ministry', 'reform'],
+    'Market Risk': ['loss', 'debt', 'default', 'scam', 'fraud', 'investigation', 'penalty', 'crisis', 'downgrade', 'fii-selling', 'inflation', 'war', 'geopolitical', 'recession'],
     'Technical Breakout': ['breakout', 'support', 'resistance', 'moving-average', 'ema', 'rsi', 'oversold', 'overbought', 'crossover', 'momentum', 'volume-spike', 'bullish-pattern'],
-    'Corporate Action': ['bonus', 'split', 'buyback', 'rights-issue', 'listing', 'ipo', 'management-change', 'ceo', 'board-approval']
+    'Corporate Action': ['bonus', 'split', 'buyback', 'rights-issue', 'listing', 'ipo', 'management-change', 'ceo', 'board-approval', 'promoter', 'stake'],
+    'FII/DII Flow': ['fii', 'dii', 'fpi', 'foreign-investor', 'institutional', 'mutual-fund', 'inflow', 'outflow', 'bulk-deal', 'block-deal']
 }
 
-def score_headline(text):
+# News Importance Keywords (KEEP categories)
+NEWS_KEEP_KEYWORDS = {
+    'Earnings': ['earnings', 'quarterly', 'q1', 'q2', 'q3', 'q4', 'profit', 'revenue', 'net income', 'eps', 'results', 'guidance'],
+    'Large Orders': ['order', 'contract', 'deal', 'billion', 'crore', 'agreement', 'partnership', 'mou'],
+    'Government': ['government', 'policy', 'regulation', 'ministry', 'sebi', 'budget', 'reform', 'fiscal'],
+    'RBI': ['rbi', 'interest rate', 'repo rate', 'monetary policy', 'inflation', 'rate cut', 'rate hike'],
+    'FII/DII': ['fii', 'dii', 'foreign investor', 'institutional', 'fpi', 'mutual fund', 'block deal', 'bulk deal'],
+    'M&A': ['merger', 'acquisition', 'takeover', 'buyout', 'stake', 'divestment', 'buyback']
+}
+
+# News IGNORE Keywords
+NEWS_IGNORE_KEYWORDS = ['celebrity', 'actor', 'film', 'movie', 'cricket', 'bollywood', 'entertainment',
+                        'horoscope', 'zodiac', 'wedding', 'lifestyle', 'recipe']
+
+# Event Detection Patterns
+EVENT_PATTERNS = {
+    'EARNINGS_BEAT': {'keywords': ['beat', 'exceeded', 'above estimate', 'strong q', 'record profit', 'profit surge', 'revenue beat'], 'impact': 2.0},
+    'EARNINGS_MISS': {'keywords': ['missed', 'below estimate', 'weak q', 'disappointing', 'profit decline', 'revenue miss'], 'impact': -2.0},
+    'RBI_RATE_CUT': {'keywords': ['rate cut', 'rbi cuts', 'repo rate reduced', 'dovish', 'easing'], 'impact': 1.5},
+    'RBI_RATE_HIKE': {'keywords': ['rate hike', 'rbi hikes', 'repo rate increased', 'hawkish', 'tightening'], 'impact': -1.5},
+    'BLOCK_DEAL_BUY': {'keywords': ['block deal buy', 'bulk deal buy', 'large stake acquired', 'promoter buy'], 'impact': 1.5},
+    'BLOCK_DEAL_SELL': {'keywords': ['block deal sell', 'bulk deal sell', 'stake sale', 'promoter sell', 'offloading'], 'impact': -1.5},
+    'FII_BUYING': {'keywords': ['fii bought', 'fpi inflow', 'foreign buying', 'fii net buyer'], 'impact': 1.5},
+    'FII_SELLING': {'keywords': ['fii sold', 'fpi outflow', 'foreign selling', 'fii net seller'], 'impact': -1.5},
+    'BUDGET': {'keywords': ['budget', 'fiscal policy', 'tax reform', 'capex boost'], 'impact': 1.0},
+    'UPGRADE': {'keywords': ['upgraded', 'target raised', 'price target', 'overweight', 'buy rating'], 'impact': 1.5},
+    'DOWNGRADE': {'keywords': ['downgraded', 'target cut', 'underweight', 'sell rating', 'reduce'], 'impact': -1.5},
+}
+
+# Stock to Sector Mapping
+STOCK_TO_SECTOR = {}
+_SECTOR_STOCKS = {
+    "Banking": ["HDFCBANK", "ICICIBANK", "SBIN", "KOTAKBANK", "AXISBANK", "INDUSINDBK", "BANDHANBNK", "PNB", "BANKBARODA", "CANBK", "IDFCFIRSTB"],
+    "IT & Tech": ["TCS", "INFY", "HCLTECH", "WIPRO", "TECHM", "LTIM", "MPHASIS", "COFORGE", "PERSISTENT", "MINDTREE"],
+    "Auto & EV": ["TATAMOTORS", "MARUTI", "M&M", "TVSMOTOR", "BAJAJ-AUTO", "EICHERMOT", "HEROMOTOCO", "ASHOKLEY"],
+    "Metal & Mining": ["TATASTEEL", "JSWSTEEL", "HINDALCO", "VEDL", "COALINDIA", "NMDC", "NATIONALUM"],
+    "Oil & Gas": ["RELIANCE", "ONGC", "BPCL", "IOC", "HINDPETRO", "GAIL", "PETRONET"],
+    "Power & Energy": ["NTPC", "POWERGRID", "TATAPOWER", "JSWENERGY", "ADANIGREEN", "ADANIPOWER", "NHPC"],
+    "FMCG & Retail": ["HINDUNILVR", "ITC", "TATACONSUM", "BRITANNIA", "NESTLEIND", "DABUR", "MARICO", "GODREJCP"],
+    "Pharma & Healthcare": ["SUNPHARMA", "DRREDDY", "CIPLA", "DIVISLAB", "APOLLOHOSP", "BIOCON", "LUPIN", "AUROPHARMA"],
+    "Railways & Infra": ["IRCTC", "IRFC", "RVNL", "LT", "ADANIENT", "ADANIPORTS", "GRASIM"],
+    "Financial Services": ["BAJFINANCE", "BAJFINSV", "SBILIFE", "HDFCLIFE", "ICICIGI", "CHOLAFIN", "MUTHOOTFIN"],
+    "Telecom": ["BHARTIARTL", "IDEA", "TATACOMM"],
+    "Cement": ["ULTRACEMCO", "AMBUJACEM", "ACC", "SHREECEM", "DALMIACEM"],
+    "Defence": ["HAL", "BEL", "BDL", "MAZAGON", "COCHINSHIP"],
+    "Commodities": ["GOLDIAM", "TATASILVER", "SILVERBEES", "GOLDBEES", "SILVERM"],
+}
+for _sect, _stocks in _SECTOR_STOCKS.items():
+    for _s in _stocks:
+        STOCK_TO_SECTOR[_s] = _sect
+
+def score_headline_v2(text):
+    """Enhanced headline scoring with weighted keywords. Returns -2 to +2."""
     t = text.lower()
-    return sum(1 for w in POS_WORDS if w in t) - sum(1 for w in NEG_WORDS if w in t)
+    score = 0.0
+    score += sum(2 for w in POS_WORDS_HIGH if w in t)
+    score += sum(1 for w in POS_WORDS_MED if w in t)
+    score -= sum(2 for w in NEG_WORDS_HIGH if w in t)
+    score -= sum(1 for w in NEG_WORDS_MED if w in t)
+    # Clamp to -2 to +2
+    return max(-2.0, min(2.0, score))
+
+def score_headline(text):
+    """Backward compatible wrapper"""
+    return score_headline_v2(text)
+
+def filter_important_news(headlines):
+    """Filter news by importance — keep financial, ignore noise, remove duplicates."""
+    if not headlines:
+        return []
+    
+    filtered = []
+    seen_titles = []
+    
+    for h in headlines:
+        title = h.get('title', '') if isinstance(h, dict) else str(h)
+        t_low = title.lower()
+        
+        # IGNORE check — skip celebrity/entertainment/noise
+        if any(kw in t_low for kw in NEWS_IGNORE_KEYWORDS):
+            continue
+        
+        # Duplicate check — skip if >80% similar to any seen title
+        is_dup = False
+        title_words = set(t_low.split())
+        for seen in seen_titles:
+            seen_words = set(seen.split())
+            if len(title_words) > 0 and len(title_words & seen_words) / len(title_words | seen_words) > 0.80:
+                is_dup = True
+                break
+        if is_dup:
+            continue
+        
+        seen_titles.append(t_low)
+        
+        # Tag importance category
+        importance = 'General'
+        for cat, keywords in NEWS_KEEP_KEYWORDS.items():
+            if any(kw in t_low for kw in keywords):
+                importance = cat
+                break
+        
+        if isinstance(h, dict):
+            h['importance'] = importance
+        else:
+            h = {'title': title, 'importance': importance}
+        
+        filtered.append(h)
+    
+    return filtered
+
+def calculate_freshness_weight(pub_date_str):
+    """Weight news by age. Returns 0.0 to 1.0. Missing date = 0.5 (user choice)."""
+    if not pub_date_str:
+        return 0.5  # Unknown age = 50% weight (user decision)
+    
+    try:
+        from email.utils import parsedate_to_datetime
+        pub_dt = parsedate_to_datetime(pub_date_str)
+        age_hours = (datetime.now(pub_dt.tzinfo) - pub_dt).total_seconds() / 3600
+    except Exception:
+        try:
+            # Try common date formats
+            for fmt in ['%a, %d %b %Y %H:%M:%S %Z', '%Y-%m-%dT%H:%M:%S', '%a, %d %b %Y %H:%M:%S %z']:
+                try:
+                    pub_dt = datetime.strptime(pub_date_str.strip(), fmt)
+                    age_hours = (datetime.now() - pub_dt).total_seconds() / 3600
+                    break
+                except:
+                    continue
+            else:
+                return 0.5
+        except:
+            return 0.5
+    
+    if age_hours <= 1:    return 1.00
+    elif age_hours <= 6:  return 0.80
+    elif age_hours <= 24: return 0.50
+    elif age_hours <= 72: return 0.10
+    else:                 return 0.00
+
+def detect_special_events(headlines):
+    """Detect special financial events from headlines. Returns event info dict."""
+    if not headlines:
+        return {'event_type': None, 'impact_score': 0.0, 'confidence': 0.0, 'description': 'No events detected'}
+    
+    best_event = None
+    best_score = 0
+    best_matches = 0
+    
+    for h in headlines:
+        title = h.get('title', '') if isinstance(h, dict) else str(h)
+        t_low = title.lower()
+        
+        for event_type, pattern in EVENT_PATTERNS.items():
+            matches = sum(1 for kw in pattern['keywords'] if kw in t_low)
+            if matches > best_matches:
+                best_matches = matches
+                best_event = event_type
+                best_score = pattern['impact']
+    
+    if best_event and best_matches > 0:
+        confidence = min(best_matches / 3.0, 1.0)
+        friendly_names = {
+            'EARNINGS_BEAT': '📊 Earnings Beat', 'EARNINGS_MISS': '📉 Earnings Miss',
+            'RBI_RATE_CUT': '🏛️ RBI Rate Cut', 'RBI_RATE_HIKE': '🏛️ RBI Rate Hike',
+            'BLOCK_DEAL_BUY': '🏦 Block Deal Buy', 'BLOCK_DEAL_SELL': '🏦 Block Deal Sell',
+            'FII_BUYING': '💰 FII Buying', 'FII_SELLING': '💸 FII Selling',
+            'BUDGET': '📋 Budget Impact', 'UPGRADE': '⬆️ Analyst Upgrade', 'DOWNGRADE': '⬇️ Analyst Downgrade'
+        }
+        return {
+            'event_type': best_event,
+            'impact_score': best_score * confidence,
+            'confidence': confidence,
+            'description': friendly_names.get(best_event, best_event)
+        }
+    
+    return {'event_type': None, 'impact_score': 0.0, 'confidence': 0.0, 'description': 'No major events'}
 
 def analyze_live_candle(df):
     """Analyzes the current forming candle for immediate momentum"""
@@ -1033,20 +1286,68 @@ def analyze_live_candle(df):
         
     return {"bias": bias, "color": color, "desc": desc, "pct": pct_from_open}
 
-def analyze_news(headlines):
-    if not headlines: return 0.0, [], "Technical Momentum (No News Data)"
+@st.cache_data(ttl=600)
+def get_sector_sentiment(symbol):
+    """Get sentiment for the stock's sector. Returns score -1.0 to +1.0."""
+    sector = STOCK_TO_SECTOR.get(symbol.upper(), None)
+    if not sector:
+        return {'score': 0.0, 'sector': 'Unknown', 'label': 'Neutral'}
+    
+    try:
+        sector_news = fetch_market_news(f"{sector} India stock market sector news")
+        if not sector_news:
+            return {'score': 0.0, 'sector': sector, 'label': 'Neutral'}
+        
+        filtered = filter_important_news(sector_news)
+        if not filtered:
+            filtered = sector_news[:5]
+        
+        total_score = 0.0
+        count = 0
+        for h in filtered:
+            title = h.get('title', '') if isinstance(h, dict) else str(h)
+            sc = score_headline_v2(title)
+            total_score += sc
+            count += 1
+        
+        avg = total_score / count if count > 0 else 0.0
+        # Normalize to -1 to +1
+        normalized = max(-1.0, min(1.0, avg / 2.0))
+        
+        if normalized > 0.2: label = f"Positive ({normalized*100:+.0f}%)"
+        elif normalized < -0.2: label = f"Negative ({normalized*100:+.0f}%)"
+        else: label = f"Neutral ({normalized*100:+.0f}%)"
+        
+        return {'score': normalized, 'sector': sector, 'label': label}
+    except:
+        return {'score': 0.0, 'sector': sector, 'label': 'Neutral'}
+
+def analyze_news_v2(headlines):
+    """Enhanced news analysis with importance filtering, freshness, and event detection."""
+    if not headlines: return 0.0, [], "Technical Momentum (No News Data)", {'event_type': None, 'impact_score': 0.0, 'confidence': 0.0, 'description': 'No events'}
+    
+    # Step 1: Filter important news
+    filtered = filter_important_news(headlines)
+    if not filtered:
+        filtered = headlines[:5]
+    
     scored = []
     cat_counts = {k: 0 for k in CATALYSTS.keys()}
     best_h = None
     max_cat_match = -1
     
-    # Filter headlines: Prioritize factual statements over speculative questions
-    for h in headlines:
+    for h in filtered:
         title = h.get('title', '') if isinstance(h, dict) else str(h)
-        # Skip purely speculative headlines if they are too short or just a single question
         if title.endswith('?') and len(title.split()) < 5: continue
         
-        sc = score_headline(title)
+        # Enhanced scoring
+        sc = score_headline_v2(title)
+        
+        # Apply freshness weight
+        pub_date = h.get('pubDate', h.get('published', '')) if isinstance(h, dict) else ''
+        freshness = calculate_freshness_weight(pub_date)
+        weighted_score = sc * freshness
+        
         t_low = title.lower()
         
         # Identify Catalysts
@@ -1060,15 +1361,32 @@ def analyze_news(headlines):
                     max_cat_match = matches
                     best_h = title
         
-        label = 'positive' if sc > 0 else 'negative' if sc < 0 else 'neutral'
-        entry = {**(h if isinstance(h, dict) else {'title': title}), 'score': sc, 'label': label, 'catalysts': found_cats}
+        # AI Score label
+        if sc >= 1.0: label = 'positive'
+        elif sc <= -1.0: label = 'negative'
+        else: label = 'neutral'
+        
+        # Score badge
+        if sc >= 1.5: score_badge = '🟢 +2'
+        elif sc >= 0.5: score_badge = '🟢 +1'
+        elif sc <= -1.5: score_badge = '🔴 -2'
+        elif sc <= -0.5: score_badge = '🔴 -1'
+        else: score_badge = '🟡 0'
+        
+        importance = h.get('importance', 'General') if isinstance(h, dict) else 'General'
+        
+        entry = {**(h if isinstance(h, dict) else {'title': title}), 
+                'score': sc, 'weighted_score': weighted_score, 'freshness': freshness,
+                'label': label, 'score_badge': score_badge, 'catalysts': found_cats,
+                'importance': importance}
         scored.append(entry)
     
-    if not scored: return 0.0, [], "Technical Indicator dominance"
+    if not scored: return 0.0, [], "Technical Indicator dominance", {'event_type': None, 'impact_score': 0.0, 'confidence': 0.0, 'description': 'No events'}
     
-    avg = sum(s['score'] for s in scored) / len(scored)
+    # Use weighted scores for average
+    avg = sum(s['weighted_score'] for s in scored) / len(scored)
     
-    # Identify Primary Catalyst & Build Descriptive Reason (Reason News)
+    # Identify Primary Catalyst
     top_cat = max(cat_counts, key=cat_counts.get) if any(cat_counts.values()) else "Broad Market Trends"
     
     prefix = ""
@@ -1078,13 +1396,21 @@ def analyze_news(headlines):
     elif top_cat == "Market Risk": prefix = "Macro Stability" if avg > 0 else "Heightened Market Risk"
     elif top_cat == "Technical Breakout": prefix = "Technical Breakout" if avg > 0 else "Technical Breakdown"
     elif top_cat == "Corporate Action": prefix = "Positive Corporate Action" if avg > 0 else "Internal Governance Scrutiny"
+    elif top_cat == "FII/DII Flow": prefix = "Strong Institutional Inflow" if avg > 0 else "Institutional Selling Pressure"
     else: prefix = "Bullish Sentiment" if avg > 0 else "Bearish Sentiment" if avg < 0 else "Market Dynamics"
 
-    # Append direct headline reason if available
     h_snippet = f': "{best_h[:75]}..."' if best_h else ""
     primary = f"{prefix}{h_snippet}"
     
-    return round(avg, 3), scored, primary
+    # Event detection
+    events = detect_special_events(filtered)
+    
+    return round(avg, 3), scored, primary, events
+
+def analyze_news(headlines):
+    """Backward compatible wrapper — returns (avg, scored, primary) without events."""
+    result = analyze_news_v2(headlines)
+    return result[0], result[1], result[2]
 
 @st.cache_data(ttl=900)
 def get_master_market_sentiment():
@@ -1504,6 +1830,9 @@ class AIEngine:
         tv_val = (tv_sent + 1.0) / 2.0
         sentiment_score = (news_val + tv_val) / 2.0
         
+        # Detect Liquidity Sweeps
+        liquidity_sweep = self.detect_liquidity_sweeps(df)
+        
         for label, step_key in zip(labels, steps):
             m_set = self.models[symbol][step_key]
             
@@ -1520,7 +1849,18 @@ class AIEngine:
             # SMC parameters & proximity calculations for current label
             ml_score = raw_prob
             tech_score = main_status['score']
+            
+            # Base Structure Score
             structure_score = 1.0 if smc['current_trend'] == ("Bullish" if ml_side == 1 else "Bearish") else 0.0
+            
+            # Liquidity Sweep Multiplier (User Request: natural boost instead of flat addition)
+            has_bull_sweep = liquidity_sweep['bullish']
+            has_bear_sweep = liquidity_sweep['bearish']
+            
+            if ml_side == 1 and has_bull_sweep:
+                structure_score *= 1.5  # Boosts the 10% weight to 15% 
+            elif ml_side == -1 and has_bear_sweep:
+                structure_score *= 1.5
             
             # Order Block Score — Search across ALL timeframes for closest OB
             ob_score = 0.0
@@ -1561,37 +1901,48 @@ class AIEngine:
             
             # Build multi-TF OB summary for display
             mtf_ob_summary = {}  # {tf_label: {type, count, closest_dist}}
-            for tf_label, tf_smc in mtf_smc.items():
-                bull_obs = tf_smc.get('active_bullish_ob', [])
-                bear_obs = tf_smc.get('active_bearish_ob', [])
-                total = len(bull_obs) + len(bear_obs)
-                if total > 0:
-                    mtf_ob_summary[tf_label] = {
-                        'bullish': len(bull_obs),
-                        'bearish': len(bear_obs),
-                        'total': total,
-                        'trend': tf_smc.get('current_trend', 'Neutral')
-                    }
+            if 'mtf_smc' in locals():
+                for tf_label, tf_smc in mtf_smc.items():
+                    bull_obs = tf_smc.get('active_bullish_ob', [])
+                    bear_obs = tf_smc.get('active_bearish_ob', [])
+                    total = len(bull_obs) + len(bear_obs)
+                    if total > 0:
+                        mtf_ob_summary[tf_label] = {
+                            'bullish': len(bull_obs),
+                            'bearish': len(bear_obs),
+                            'total': total,
+                            'trend': tf_smc.get('current_trend', 'Neutral')
+                        }
+                
+            # Fibonacci Confluence
+            fib_score = 0.0
+            fib_levels = self.calculate_fibonacci(df)
+            if fib_levels:
+                for lvl in fib_levels.values():
+                    dist = abs(current_price - lvl) / current_price
+                    if dist < 0.005: # Within 0.5%
+                        fib_score = 1.0
+                        break
+                    elif dist < 0.01:
+                        fib_score = 0.5
             
-            # FVG Score
+            # Fair Value Gap Proximity
             fvg_score = 0.0
             closest_fvg = None
-            closest_fvg_dist_pct = 999.0
-            if ml_side == 1:
-                fvgs = smc['active_bullish_fvg']
-            else:
-                fvgs = smc['active_bearish_fvg']
-            
-            if fvgs:
+            closest_fvg_dist_pct = 0.0
+            if smc['fvg']:
                 best_fvg = None
                 min_dist = float('inf')
-                for fvg in fvgs:
-                    if current_price < fvg['bottom']:
-                        dist = fvg['bottom'] - current_price
-                    elif current_price > fvg['top']:
+                for fvg in smc['fvg']:
+                    # Bullish ML -> look for Bullish FVG below price
+                    if ml_side == 1 and fvg['type'] == 'Bullish' and current_price >= fvg['top']:
                         dist = current_price - fvg['top']
+                    # Bearish ML -> look for Bearish FVG above price
+                    elif ml_side == -1 and fvg['type'] == 'Bearish' and current_price <= fvg['bottom']:
+                        dist = fvg['bottom'] - current_price
                     else:
-                        dist = 0.0
+                        continue
+                        
                     if dist < min_dist:
                         min_dist = dist
                         best_fvg = fvg
@@ -1601,25 +1952,34 @@ class AIEngine:
                     fvg_score = 1.0 if min_dist == 0.0 else max(0.0, 1.0 - min_dist / (ref * 0.02))
                     closest_fvg_dist_pct = (min_dist / current_price) * 100.0
             
-            # Weighted Confluence Score (Factor weights)
+            # ML Ensemble Probability
+            ml_score = raw_prob
+            
+            # 10-Factor Institutional Confluence Score
             final_score = (
-                (ml_score * 0.35) +
-                (tech_score * 0.20) +
-                (volume_score * 0.15) +
-                (structure_score * 0.10) +
-                (ob_score * 0.10) +
-                (fib_score * 0.05) +
-                (fvg_score * 0.05)
+                (ml_score * 0.30) +         # ML ensemble
+                (tech_score * 0.18) +        # Technical
+                (volume_score * 0.12) +      # Volume
+                (structure_score * 0.10) +   # SMC Structure
+                (ob_score * 0.08) +          # Order Block
+                (fib_score * 0.04) +         # Fibonacci
+                (fvg_score * 0.03) +         # FVG
+                (news_score * 0.07) +        # NEW: News Sentiment
+                (sec_score * 0.04) +         # NEW: Sector Sentiment
+                (evt_score * 0.04)           # NEW: Event Impact
             )
             
             # Baseline conviction score (excluding SMC optional components OB, FVG, Fib)
-            # ML(35) + Tech(20) + Vol(15) + Struct(10) = 80%
+            # ML(30) + Tech(18) + Vol(12) + Struct(10) + News(7) + Sec(4) + Evt(4) = 85%
             baseline_score = (
-                (ml_score * 0.35) +
-                (tech_score * 0.20) +
-                (volume_score * 0.15) +
-                (structure_score * 0.10)
-            ) / 0.80
+                (ml_score * 0.30) +
+                (tech_score * 0.18) +
+                (volume_score * 0.12) +
+                (structure_score * 0.10) +
+                (news_score * 0.07) +
+                (sec_score * 0.04) +
+                (evt_score * 0.04)
+            ) / 0.85
             
             # Apply Multipliers to both scores
             baseline_score *= vol_mult
@@ -1633,15 +1993,9 @@ class AIEngine:
             final_score = min(max(final_score, 0.0), 1.0)
             
             # Guardrails
-            # 1. AI model must align (raw_prob < 0.50 means model is neutral/opposite)
-            if raw_prob < 0.50:
-                final_score = min(final_score, 0.39)
-            # 2. Cannot convert HOLD (baseline < 0.40) to BUY
-            elif baseline_score < 0.40:
-                final_score = min(final_score, 0.39)
-            # 3. Cannot convert HOLD/BUY (baseline < 0.65) to POWER BUY
-            elif baseline_score < 0.65:
-                final_score = min(final_score, 0.64)
+            if raw_prob < 0.50: final_score = min(final_score, 0.39)
+            elif baseline_score < 0.40: final_score = min(final_score, 0.39)
+            elif baseline_score < 0.65: final_score = min(final_score, 0.64)
             
             # Signal Selection
             if vol_mult <= 0.1: sig = "NO TRADE (Low Volatility)"
@@ -1650,13 +2004,11 @@ class AIEngine:
             elif final_score >= 0.40: sig = "BUY" if ml_side == 1 else "SELL"
             else: sig = "NO TRADE (Low Confidence)"
             
-            # Stars scoring based on final confluence score
             stars = 5 if final_score >= 0.85 else 4 if final_score >= 0.70 else 3 if final_score >= 0.50 else 2 if final_score >= 0.30 else 1
             
             results[label] = {
                 'signal': sig, 'confidence': round(final_score, 4), 'stars': stars,
                 'ml_prob': round(raw_prob, 4), 'tech_score': main_status['score'],
-                'pattern_score': 0.5,
                 'is_trending': is_trending,
                 'scores': {
                     'ml_score': round(ml_score, 4),
@@ -1665,13 +2017,20 @@ class AIEngine:
                     'structure_score': round(structure_score, 4),
                     'ob_score': round(ob_score, 4),
                     'fib_score': round(fib_score, 4),
-                    'fvg_score': round(fvg_score, 4)
+                    'fvg_score': round(fvg_score, 4),
+                    'news_score': round(news_score, 4),
+                    'sec_score': round(sec_score, 4),
+                    'evt_score': round(evt_score, 4)
                 },
                 'breakdown': {
                     'Trend Alignment': "PASS ✅" if not is_conflict else "FAIL ❌",
                     'Volume Confirm': "PASS ✅" if is_vol_strong else "FAIL ❌",
                     'MTF Sync': "PASS ✅" if is_mtf_sync else "FAIL ❌",
-                    'Volatility OK': "PASS ✅" if vol_mult > 0 else "FAIL ❌"
+                    'Volatility OK': "PASS ✅" if vol_mult > 0 else "FAIL ❌",
+                    'News Sentiment': "PASS ✅" if news_score >= 0.5 else "FAIL ❌",
+                    'Sector Trend': "PASS ✅" if sec_score >= 0.5 else "FAIL ❌",
+                    'Event Impact': "PASS ✅" if evt_score >= 0.5 else "FAIL ❌",
+                    'Liquidity Sweep': "PASS 💧" if (ml_side == 1 and liquidity_sweep['bullish']) or (ml_side == -1 and liquidity_sweep['bearish']) else "FAIL ❌"
                 },
                 'smc': {
                     'current_trend': smc['current_trend'],
@@ -1689,7 +2048,7 @@ class AIEngine:
         results['mtf_status'] = mtf_data
         results['volatility'] = vol_label
         results['triple_confirm'] = triple_confirm
-        results['liquidity_sweep'] = self.detect_liquidity_sweeps(df)
+        results['liquidity_sweep'] = liquidity_sweep
         return results
 
     def get_timeframe_status(self, df):
@@ -1721,7 +2080,7 @@ class AIEngine:
         Identify institutional liquidity sweeps where the price hunts stops past swing peaks/troughs before reversing.
         """
         if df is None or len(df) < window * 2 + 1:
-            return {"bullish": False, "bearish": False}
+            return {"bullish": False, "bearish": False, "bullish_level": None, "bearish_level": None}
         
         df = df.copy()
         highs = df['High'].values
@@ -1739,14 +2098,27 @@ class AIEngine:
         
         bullish_sweep = False
         bearish_sweep = False
+        bullish_level = None
+        bearish_level = None
         
         # 2. Check the latest two candles
+        volumes = df['Volume'].values if 'Volume' in df.columns else np.zeros(len(df))
+        opens = df['Open'].values
+        
+        bullish_quality = "None"
+        bearish_quality = "None"
+        
         for idx in [len(df) - 2, len(df) - 1]:
             if idx < 0 or idx >= len(df):
                 continue
             current_low = lows[idx]
             current_high = highs[idx]
             current_close = closes[idx]
+            current_open = opens[idx]
+            current_vol = volumes[idx]
+            
+            vol_avg = np.mean(volumes[max(0, idx-20):idx]) if idx > 0 else 0
+            body = abs(current_open - current_close)
             
             # Bullish sweep
             recent_lows = [val for pos, val in swing_lows if pos < idx and idx - pos <= lookback]
@@ -1754,6 +2126,16 @@ class AIEngine:
                 min_recent_low = min(recent_lows)
                 if current_low < min_recent_low and current_close > min_recent_low:
                     bullish_sweep = True
+                    bullish_level = min_recent_low
+                    
+                    # Calculate quality
+                    lower_wick = min(current_open, current_close) - current_low
+                    is_large_wick = lower_wick > body * 1.5
+                    is_high_vol = current_vol > vol_avg * 1.2
+                    
+                    if is_large_wick and is_high_vol: bullish_quality = "Institutional ⭐⭐⭐⭐⭐"
+                    elif is_large_wick or is_high_vol: bullish_quality = "Medium ⭐⭐⭐"
+                    else: bullish_quality = "Weak ⭐"
                     
             # Bearish sweep
             recent_highs = [val for pos, val in swing_highs if pos < idx and idx - pos <= lookback]
@@ -1761,8 +2143,25 @@ class AIEngine:
                 max_recent_high = max(recent_highs)
                 if current_high > max_recent_high and current_close < max_recent_high:
                     bearish_sweep = True
+                    bearish_level = max_recent_high
                     
-        return {"bullish": bullish_sweep, "bearish": bearish_sweep}
+                    # Calculate quality
+                    upper_wick = current_high - max(current_open, current_close)
+                    is_large_wick = upper_wick > body * 1.5
+                    is_high_vol = current_vol > vol_avg * 1.2
+                    
+                    if is_large_wick and is_high_vol: bearish_quality = "Institutional ⭐⭐⭐⭐⭐"
+                    elif is_large_wick or is_high_vol: bearish_quality = "Medium ⭐⭐⭐"
+                    else: bearish_quality = "Weak ⭐"
+                    
+        return {
+            "bullish": bullish_sweep, 
+            "bearish": bearish_sweep,
+            "bullish_level": bullish_level,
+            "bearish_level": bearish_level,
+            "bullish_quality": bullish_quality,
+            "bearish_quality": bearish_quality
+        }
 
     @staticmethod
     def detect_smc_features(df):
@@ -2942,7 +3341,7 @@ def main():
         st.markdown("### 🏛️ SRV Future Traders")
         page = st.radio("Navigate", [
             "🏠 Explore", "🔮 AI Prediction", "📈 AI Backtester", "🔍 Stock Screener", "📰 Market News",
-            "📊 All Stocks", "🏆 Top Movers"
+            "🔥 MTF Scanner", "🏆 Top Movers"
         ], key="page")
         st.markdown("---")
         st.markdown(f'''
@@ -2997,8 +3396,8 @@ def main():
         page_screener()
     elif page == "📰 Market News":
         page_news()
-    elif page == "📊 All Stocks":
-        page_all_stocks()
+    elif page == "🔥 MTF Scanner":
+        page_mtf_scanner()
     elif page == "🏆 Top Movers":
         page_top_movers()
 
@@ -3655,17 +4054,27 @@ def page_prediction():
                 prices = df_run['Close'].dropna().astype(float).tolist()
                 volumes = df_run['Volume'].dropna().astype(float).tolist()
                 
-                with st.spinner("📰 Analyzing news..."): 
+                with st.spinner("📰 Analyzing news & sector momentum..."): 
                     # Fetch Local and Global separately for comparison
                     local_news = fetch_market_news(f"{symbol} share stock market news")
                     master_sent = get_master_market_sentiment()
                     
-                    st.session_state.pred_local_catalyst = master_sent['local_reason']
+                    # New AI Intelligence v2
+                    news_score, scored_local_news, local_reason, local_events = analyze_news_v2(local_news)
+                    sec_sent = get_sector_sentiment(symbol)
+                    sector_score = sec_sent['score']
+                    event_score = local_events['impact_score']
+                    
+                    st.session_state.pred_local_catalyst = local_reason # Stock specific
                     st.session_state.pred_global_catalyst = master_sent['global_reason']
-                    st.session_state.pred_catalyst = f"India: {master_sent['local_reason']} | Global: {master_sent['global_reason']}"
-                    st.session_state.pred_indian_news = analyze_news(local_news)[1][:5]
+                    st.session_state.pred_catalyst = f"Stock: {local_reason} | Sector: {sec_sent['label']}"
+                    st.session_state.pred_indian_news = scored_local_news[:5]
                     st.session_state.pred_global_news = master_sent['global_headlines']
-                    sent = master_sent['score']
+                    st.session_state.pred_events = local_events
+                    st.session_state.pred_sector = sec_sent
+                    
+                    # For legacy fallback in train
+                    sent = news_score
 
                 with st.spinner("🧠 Training Engine..."):
                     metrics = st.session_state.engine.train(symbol, prices, volumes, sent)
@@ -3675,7 +4084,7 @@ def page_prediction():
                     tv_sentiment = fetch_tv_sentiment(symbol, mapped)
                 
                 if metrics:
-                    res = st.session_state.engine.predict(symbol, prices, volumes, sent, tv_sent=tv_sentiment, intraday=is_intra, df=df_run, df_1h=df_1h, df_1d=df_1d, df_15m=df_15m)
+                    res = st.session_state.engine.predict(symbol, prices, volumes, news_sent=news_score, tv_sent=tv_sentiment, sector_score=sector_score, event_score=event_score, intraday=is_intra, df=df_run, df_1h=df_1h, df_1d=df_1d, df_15m=df_15m)
                     st.session_state.pred_results = res
                     
                     # NEW: Step 1, 3 & 5 Integration
@@ -4097,15 +4506,26 @@ def page_prediction():
 <div style="font-size: 0.7rem; color: #64748b; margin-top: 12px; text-align: center;">Highlighted card = Timeframe where the closest Order Block was detected. OB from higher timeframes carry more institutional weight.</div>
 </div>''', unsafe_allow_html=True)
 
-        # 4. Sentiment Catalyst Summary (India vs Global)
-        st.markdown('<div class="section-head">🧠 Sentiment Catalyst (India vs Global)</div>', unsafe_allow_html=True)
+        # 4. AI Market Intelligence (News, Sector, Events)
+        st.markdown('<div class="section-head">🧠 AI Market Intelligence</div>', unsafe_allow_html=True)
         local_cat = st.session_state.get('pred_local_catalyst', 'Stable domestic market conditions.')
         global_cat = st.session_state.get('pred_global_catalyst', 'Neutral global queues.')
         
+        # New Intelligence Details
+        sec_data = st.session_state.get('pred_sector', {'label': 'Neutral', 'sector': 'Unknown'})
+        evt_data = st.session_state.get('pred_events', {'description': 'No major events', 'impact_score': 0.0})
+        
+        evt_color = "#10b981" if evt_data['impact_score'] > 0 else "#ef4444" if evt_data['impact_score'] < 0 else "#94a3b8"
+        sec_color = "#10b981" if "Positive" in sec_data['label'] else "#ef4444" if "Negative" in sec_data['label'] else "#94a3b8"
+        
         st.markdown(f'''
-        <div style="background: rgba(99,102,241,0.08); border: 1px solid rgba(99,102,241,0.2); border-left: 6px solid #6366f1; padding: 15px 20px; border-radius: 10px; margin-bottom: 20px; font-size: 0.9rem; line-height: 1.5; color: #cbd5e1;">
-            <b>🇮🇳 India Catalyst:</b> {local_cat}<br>
-            <b>🌎 Global Driver:</b> {global_cat}
+        <div style="background: rgba(99,102,241,0.08); border: 1px solid rgba(99,102,241,0.2); border-left: 6px solid #6366f1; padding: 15px 20px; border-radius: 10px; margin-bottom: 20px; font-size: 0.9rem; line-height: 1.6; color: #cbd5e1; display: grid; gap: 8px;">
+            <div><b style="color: #a78bfa; margin-right: 8px;">🔥 {sec_data['sector']} Sector:</b> <span style="color: {sec_color}; font-weight: 600;">{sec_data['label']}</span></div>
+            <div><b style="color: #a78bfa; margin-right: 8px;">⚡ Financial Event:</b> <span style="color: {evt_color}; font-weight: 600;">{evt_data['description']}</span></div>
+            <div style="margin-top: 5px; padding-top: 8px; border-top: 1px solid rgba(255,255,255,0.05);">
+                <b>🇮🇳 Stock Catalyst:</b> {local_cat}<br>
+                <b>🌎 Global Driver:</b> {global_cat}
+            </div>
         </div>
         ''', unsafe_allow_html=True)
 
@@ -4143,15 +4563,19 @@ def page_prediction():
         ''', unsafe_allow_html=True)
 
         # 7. WHY THIS PREDICTION? (Logic Explanation)
-        st.markdown('<div class="section-head">🔍 Why This Prediction?</div>', unsafe_allow_html=True)
+        st.markdown('<div class="section-head">🔍 Why This Prediction? (10-Factor AI)</div>', unsafe_allow_html=True)
         today_res = pred['today']
-        exp_col1, exp_col2, exp_col3 = st.columns(3)
+        exp_col1, exp_col2, exp_col3, exp_col4, exp_col5 = st.columns(5)
         with exp_col1:
-            st.metric("ML Probability", f"{today_res['ml_prob']:.1%}", help="Probability from Random Forest & Gradient Boosting ensembles.")
+            st.metric("ML Score", f"{today_res['scores'].get('ml_score', 0):.1%}")
         with exp_col2:
-            st.metric("Technical Score", f"{today_res['tech_score']:.1%}", help="Score based on RSI and EMA crossovers.")
+            st.metric("Tech Score", f"{today_res['scores'].get('tech_score', 0):.1%}")
         with exp_col3:
-            st.metric("Pattern Score", f"{today_res['pattern_score']:.1%}", help="Score from candlestick pattern recognition.")
+            st.metric("News Bias", f"{today_res['scores'].get('news_score', 0):.1%}")
+        with exp_col4:
+            st.metric("Sector", f"{today_res['scores'].get('sec_score', 0):.1%}")
+        with exp_col5:
+            st.metric("Event Impact", f"{today_res['scores'].get('evt_score', 0):.1%}")
 
         # 8. INSTITUTIONAL CONVICTION DASHBOARD (v3 - Weighted Model)
         st.markdown('<br><hr><br>', unsafe_allow_html=True)
@@ -4449,35 +4873,173 @@ def page_news():
     st.link_button("📰 MoneyControl", "https://www.moneycontrol.com/")
 
 
-# ── PAGE: All Stocks ──────────────────────────────────────────────────────
-def page_all_stocks():
-    st.subheader("📊 All Stocks — Live Prices")
-    category = st.selectbox("Select Category", list(DASHBOARD_CATEGORIES.keys()))
-    symbols = DASHBOARD_CATEGORIES[category]
+# ── PAGE: MTF Scanner ──────────────────────────────────────────────────────
+def page_mtf_scanner():
+    st.subheader("🔥 Institutional MTF Scanner & Liquidity Sweeps (v4.0)")
+    
+    st.markdown("""
+        <div style="font-size:0.85rem; color:#94a3b8; margin-bottom: 20px;">
+        Scans all selected stocks simultaneously across <b>1D, 1H, and 15m</b> timeframes to detect Trend Alignment, Order Block Proximity, and 💧 <b>Liquidity Sweeps</b>.
+        </div>
+    """, unsafe_allow_html=True)
+    
+    col1, col2 = st.columns([3, 1])
+    with col1:
+        category = st.selectbox("Select Sector to Scan (Recommended)", list(DASHBOARD_CATEGORIES.keys()))
+        symbols = DASHBOARD_CATEGORIES[category]
+    with col2:
+        st.markdown("<br>", unsafe_allow_html=True)
+        scan_all = st.checkbox("🚀 Scan Entire Market (Slow)", value=False)
+        if scan_all:
+            # Flatten all symbols
+            symbols = []
+            for catsyms in DASHBOARD_CATEGORIES.values():
+                symbols.extend(catsyms)
+                
     # Remove duplicates
     symbols = list(dict.fromkeys(symbols))
     
-    rows = []
-    prog = st.progress(0, text="Loading...")
-    for i, sym in enumerate(symbols):
-        prog.progress((i+1)/len(symbols), text=f"Fetching {sym}...")
-        info = get_price_info(sym, 5)
-        if info:
-            rows.append({'Stock': sym, 'Price': f"{info['currency']}{info['price']:,.2f}",
-                'Change': f"{info['change']:+.2f}", 'Change%': f"{info['pct']:+.2f}%",
-                'Volume': f"{info['volume']:,}"})
-    prog.empty()
-
-    if rows:
-        rdf = pd.DataFrame(rows)
-        def styl(val):
-            if '+' in str(val): return 'color: #10b981; font-weight: bold'
-            elif '-' in str(val): return 'color: #ef4444; font-weight: bold'
-            return ''
-        st.dataframe(rdf.style.map(styl, subset=['Change','Change%']),
-                     use_container_width=True, hide_index=True)
-    else:
-        st.warning("No data available")
+    if st.button("Start Scanner", type="primary"):
+        prog = st.progress(0, text="Fetching Multi-Timeframe Data (Bulk)...")
+        bulk_data = fetch_bulk_mtf_data(symbols)
+        prog.progress(0.5, text="Analyzing SMC Structure & Sweeps...")
+        
+        rows = []
+        engine = AIEngine()
+        
+        for i, sym in enumerate(symbols):
+            prog.progress(0.5 + (0.5 * (i / len(symbols))), text=f"Analyzing {sym}...")
+            if sym not in bulk_data: continue
+            
+            df_1d = bulk_data[sym].get('1d')
+            df_1h = bulk_data[sym].get('1h')
+            df_15m = bulk_data[sym].get('15m')
+            
+            if df_1d is None or df_1h is None or df_15m is None: continue
+            if df_1d.empty or df_1h.empty or df_15m.empty: continue
+            
+            stat_1d = engine.get_timeframe_status(df_1d)
+            stat_1h = engine.get_timeframe_status(df_1h)
+            stat_15m = engine.get_timeframe_status(df_15m)
+            
+            sweep_data = engine.detect_liquidity_sweeps(df_15m) # Detect sweeps on lower timeframe
+            sweep_str = "None"
+            sweep_qual_bonus = 0
+            if sweep_data['bullish']: 
+                sweep_str = f"💧 Bull ({sweep_data['bullish_quality']})"
+                if "⭐⭐⭐⭐⭐" in sweep_str: sweep_qual_bonus = 15
+                elif "⭐⭐⭐" in sweep_str: sweep_qual_bonus = 10
+                elif "⭐" in sweep_str: sweep_qual_bonus = 5
+            elif sweep_data['bearish']: 
+                sweep_str = f"💧 Bear ({sweep_data['bearish_quality']})"
+                if "⭐⭐⭐⭐⭐" in sweep_str: sweep_qual_bonus = 15
+                elif "⭐⭐⭐" in sweep_str: sweep_qual_bonus = 10
+                elif "⭐" in sweep_str: sweep_qual_bonus = 5
+            
+            # SMC and OB distance
+            smc_15m = engine.detect_smc_features(df_15m)
+            current_price = float(df_15m['Close'].iloc[-1])
+            closest_ob_dist = "N/A"
+            ob_age = 999
+            ml_side = 1 if stat_1d['trend'] == "Bullish" else -1
+            
+            ob_list = smc_15m.get('active_bullish_ob', []) if ml_side == 1 else smc_15m.get('active_bearish_ob', [])
+            if ob_list:
+                min_d = float('inf')
+                best_ob = None
+                for ob in ob_list:
+                    # distance to OB
+                    if ml_side == 1 and current_price > ob['top']:
+                        d = current_price - ob['top']
+                    elif ml_side == -1 and current_price < ob['bottom']:
+                        d = ob['bottom'] - current_price
+                    else:
+                        d = 0.0
+                    if d < min_d: 
+                        min_d = d
+                        best_ob = ob
+                if min_d != float('inf'):
+                    closest_ob_dist = f"{(min_d / current_price) * 100:.2f}%"
+                    ob_age = best_ob['age']
+                    
+            is_sync = stat_1d['trend'] == stat_1h['trend'] == stat_15m['trend']
+            
+            # Calculate institutional confluence proxy for the scanner
+            confluence = 50
+            if is_sync: confluence += 20
+            
+            # Liquidity Sweep Quality Bonus
+            if (ml_side == 1 and sweep_data['bullish']) or (ml_side == -1 and sweep_data['bearish']):
+                confluence += sweep_qual_bonus
+            
+            if closest_ob_dist != "N/A":
+                d_pct = float(closest_ob_dist.replace('%',''))
+                if d_pct < 2.0: confluence += 10 # Proximity bonus
+                
+                # OB Freshness Bonus
+                if ob_age < 10: confluence += 10
+                elif ob_age < 30: confluence += 5
+            
+            sig = "HOLD"
+            if confluence >= 85: sig = "STRONG BUY" if ml_side == 1 else "STRONG SELL"
+            elif confluence >= 70: sig = "BUY" if ml_side == 1 else "SELL"
+            
+            rows.append({
+                'Stock': sym,
+                '1D': '🟢 Bull' if stat_1d['trend'] == 'Bullish' else '🔴 Bear',
+                '1H': '🟢 Bull' if stat_1h['trend'] == 'Bullish' else '🔴 Bear',
+                '15m': '🟢 Bull' if stat_15m['trend'] == 'Bullish' else '🔴 Bear',
+                'Sweep': sweep_str,
+                'OB Dist': closest_ob_dist,
+                'Sync': '✅' if is_sync else '❌',
+                'Conf %': f"{confluence}%",
+                'Signal': sig,
+                '_conf_val': confluence # for sorting
+            })
+            
+        prog.empty()
+        
+        if rows:
+            rdf = pd.DataFrame(rows)
+            rdf = rdf.sort_values(by='_conf_val', ascending=False).drop(columns=['_conf_val'])
+            rdf.insert(0, 'Rank', range(1, len(rdf) + 1))
+            
+            # --- Alert System (Phase 1) ---
+            top_stock = rdf.iloc[0]
+            top_conf = int(top_stock['Conf %'].replace('%', ''))
+            if top_conf >= 90 and 'STRONG' in top_stock['Signal']:
+                with st.container(border=True):
+                    alert_color = "#10b981" if "BUY" in top_stock['Signal'] else "#ef4444"
+                    st.markdown(f'''
+                        <div style="background-color:{alert_color}1a; padding:15px; border-radius:8px; border-left:4px solid {alert_color}; margin-bottom:20px;">
+                            <h3 style="margin-top:0px; margin-bottom:10px;">🔔 Institutional Alert: {top_stock['Stock']}</h3>
+                            <div style="display:flex; justify-content:space-between;">
+                                <div>
+                                    <b>Signal:</b> <span style="color:{alert_color}; font-weight:bold;">{top_stock['Signal']}</span><br>
+                                    <b>Confluence:</b> {top_stock['Conf %']}
+                                </div>
+                                <div>
+                                    <b>Key Triggers:</b><br>
+                                    {'✅ MTF Sync<br>' if '✅' in top_stock['Sync'] else ''}
+                                    {top_stock['Sweep']}<br>
+                                    🎯 Order Block Proximity: {top_stock['OB Dist']}
+                                </div>
+                            </div>
+                        </div>
+                    ''', unsafe_allow_html=True)
+            # ------------------------------
+            
+            def styl(val):
+                v_str = str(val)
+                if 'Bull' in v_str or 'STRONG BUY' in v_str or '✅' in v_str: return 'color: #10b981; font-weight: bold'
+                elif 'Bear' in v_str or 'STRONG SELL' in v_str or '❌' in v_str: return 'color: #ef4444; font-weight: bold'
+                elif '💧' in v_str: return 'color: #3b82f6; font-weight: bold'
+                return ''
+                
+            st.dataframe(rdf.style.map(styl, subset=['1D', '1H', '15m', 'Sweep', 'Sync', 'Signal']),
+                         use_container_width=True, hide_index=True)
+        else:
+            st.warning("No confluence data found in this scan.")
 
 
 # ── PAGE: Top Movers ──────────────────────────────────────────────────────

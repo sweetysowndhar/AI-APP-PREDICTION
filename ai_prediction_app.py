@@ -4077,20 +4077,18 @@ def page_prediction():
                     is_active_tf = (tf == ob_tf_label)
                     border_style = f"border: 2px solid {trend_c};" if is_active_tf else "border: 1px solid #334155;"
                     glow = f"box-shadow: 0 0 12px {trend_c}40;" if is_active_tf else ""
-                    tf_cards_html += f'''
-                    <div style="background: rgba(255,255,255,0.03); {border_style} {glow} border-radius: 12px; padding: 12px 16px; text-align: center; min-width: 120px;">
-                        <div style="font-size: 0.65rem; color: #64748b; text-transform: uppercase; font-weight: 800; margin-bottom: 6px;">{tf} Timeframe</div>
-                        <div style="font-size: 1.4rem; font-weight: 900; color: {trend_c}; margin-bottom: 4px;">{info['total']}</div>
-                        <div style="font-size: 0.7rem; color: #94a3b8; margin-bottom: 2px;">🟢 {info['bullish']} Bull  ·  🔴 {info['bearish']} Bear</div>
-                        <div style="font-size: 0.7rem; font-weight: 700; color: {trend_c}; text-transform: uppercase;">{info['trend']} Trend</div>
-                    </div>'''
+                    tf_cards_html += f'''<div style="background: rgba(255,255,255,0.03); {border_style} {glow} border-radius: 12px; padding: 12px 16px; text-align: center; min-width: 120px;">
+<div style="font-size: 0.65rem; color: #64748b; text-transform: uppercase; font-weight: 800; margin-bottom: 6px;">{tf} Timeframe</div>
+<div style="font-size: 1.4rem; font-weight: 900; color: {trend_c}; margin-bottom: 4px;">{info['total']}</div>
+<div style="font-size: 0.7rem; color: #94a3b8; margin-bottom: 2px;">🟢 {info['bullish']} Bull  ·  🔴 {info['bearish']} Bear</div>
+<div style="font-size: 0.7rem; font-weight: 700; color: {trend_c}; text-transform: uppercase;">{info['trend']} Trend</div>
+</div>'''
                 else:
-                    tf_cards_html += f'''
-                    <div style="background: rgba(255,255,255,0.02); border: 1px dashed #334155; border-radius: 12px; padding: 12px 16px; text-align: center; min-width: 120px; opacity: 0.5;">
-                        <div style="font-size: 0.65rem; color: #64748b; text-transform: uppercase; font-weight: 800; margin-bottom: 6px;">{tf} Timeframe</div>
-                        <div style="font-size: 1.4rem; font-weight: 900; color: #334155; margin-bottom: 4px;">—</div>
-                        <div style="font-size: 0.7rem; color: #475569;">No Active OB</div>
-                    </div>'''
+                    tf_cards_html += f'''<div style="background: rgba(255,255,255,0.02); border: 1px dashed #334155; border-radius: 12px; padding: 12px 16px; text-align: center; min-width: 120px; opacity: 0.5;">
+<div style="font-size: 0.65rem; color: #64748b; text-transform: uppercase; font-weight: 800; margin-bottom: 6px;">{tf} Timeframe</div>
+<div style="font-size: 1.4rem; font-weight: 900; color: #334155; margin-bottom: 4px;">—</div>
+<div style="font-size: 0.7rem; color: #475569;">No Active OB</div>
+</div>'''
             st.markdown(f'''<div class="premium-card" style="margin-bottom: 25px; color: #f8fafc;">
 <div style="font-size: 0.9rem; font-weight: 800; color: #a78bfa; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 15px; display: flex; align-items: center; gap: 8px;">⏱️ Multi-Timeframe Order Block Map</div>
 <div style="display: flex; gap: 15px; justify-content: center; flex-wrap: wrap;">
@@ -4306,48 +4304,44 @@ def page_prediction():
 
         # Determine execution details or N/A
         if "HOLD" in today_sig or "NO TRADE" in today_sig or "HOLD" in v_sig or "NO TRADE" in v_sig:
-            exec_html = f'''
-            <div style="font-size:0.85rem; color:#64748b; margin-bottom:12px; font-weight:700; text-transform:uppercase;">Execution Levels</div>
-            <div style="text-align:center; padding: 25px 0; color:#94a3b8;">
-                <div style="font-size:2rem; margin-bottom:5px;">⚖️</div>
-                <div style="font-size:0.9rem; font-weight:700; color:#f59e0b; text-transform:uppercase; letter-spacing:0.5px;">N/A — HOLD POSITION</div>
-                <div style="font-size:0.75rem; color:#64748b; margin-top:6px; line-height:1.4;">சந்தையில் தற்போதைக்கு புதிய வர்த்தகங்கள் (New Trade Entry) தவிர்க்கப்பட வேண்டும்.</div>
-            </div>
-            '''
+            exec_html = f'''<div style="font-size:0.85rem; color:#64748b; margin-bottom:12px; font-weight:700; text-transform:uppercase;">Execution Levels</div>
+<div style="text-align:center; padding: 25px 0; color:#94a3b8;">
+<div style="font-size:2rem; margin-bottom:5px;">⚖️</div>
+<div style="font-size:0.9rem; font-weight:700; color:#f59e0b; text-transform:uppercase; letter-spacing:0.5px;">N/A — HOLD POSITION</div>
+<div style="font-size:0.75rem; color:#64748b; margin-top:6px; line-height:1.4;">சந்தையில் தற்போதைக்கு புதிய வர்த்தகங்கள் (New Trade Entry) தவிர்க்கப்பட வேண்டும்.</div>
+</div>'''
         else:
             qty_label = "Quantity to Buy" if "BUY" in today_sig else "Quantity to Short"
-            exec_html = f'''
-            <div style="font-size:0.85rem; color:#64748b; margin-bottom:12px; font-weight:700; text-transform:uppercase;">Execution Levels</div>
-            <div style="display:flex; justify-content:space-between; margin-bottom:8px;">
-                <span style="color:#94a3b8;">Entry</span>
-                <span style="font-weight:800; color:#f8fafc;">₹{rp.get('entry', 0):,.2f}</span>
-            </div>
-            <div style="display:flex; justify-content:space-between; margin-bottom:8px;">
-                <span style="color:#94a3b8;">Stop Loss</span>
-                <span style="font-weight:800; color:#ef4444;">₹{rp.get('sl', 0):,.2f}</span>
-            </div>
-            <div style="display:flex; justify-content:space-between; margin-bottom:8px;">
-                <span style="color:#94a3b8;">Target</span>
-                <span style="font-weight:800; color:#10b981;">₹{rp.get('target', 0):,.2f}</span>
-            </div>
-            <hr style="border:0.5px solid #334155; margin:10px 0;">
-            <div style="display:flex; justify-content:space-between; font-size:0.8rem;">
-                <span style="color:#64748b;">Risk Amount (Max Loss)</span>
-                <span style="color:#ef4444; font-weight:800;">₹{rp.get('risk_amt', 0):,.0f}</span>
-            </div>
-            <div style="display:flex; justify-content:space-between; font-size:0.8rem; margin-top:4px;">
-                <span style="color:#64748b;">Reward (Target Profit)</span>
-                <span style="color:#10b981; font-weight:800;">₹{rp.get('profit_amt', 0):,.0f}</span>
-            </div>
-            <div style="display:flex; justify-content:space-between; font-size:0.8rem; margin-top:4px;">
-                <span style="color:#64748b;">{qty_label}</span>
-                <span style="color:#38bdf8; font-weight:800;">{rp.get('pos_size', 0)} Shares</span>
-            </div>
-            <div style="display:flex; justify-content:space-between; font-size:0.8rem; margin-top:4px;">
-                <span style="color:#64748b;">Risk/Reward Ratio</span>
-                <span style="color:#f8fafc; font-weight:700;">{rp.get('risk_reward', '1:2')}</span>
-            </div>
-            '''
+            exec_html = f'''<div style="font-size:0.85rem; color:#64748b; margin-bottom:12px; font-weight:700; text-transform:uppercase;">Execution Levels</div>
+<div style="display:flex; justify-content:space-between; margin-bottom:8px;">
+<span style="color:#94a3b8;">Entry</span>
+<span style="font-weight:800; color:#f8fafc;">₹{rp.get('entry', 0):,.2f}</span>
+</div>
+<div style="display:flex; justify-content:space-between; margin-bottom:8px;">
+<span style="color:#94a3b8;">Stop Loss</span>
+<span style="font-weight:800; color:#ef4444;">₹{rp.get('sl', 0):,.2f}</span>
+</div>
+<div style="display:flex; justify-content:space-between; margin-bottom:8px;">
+<span style="color:#94a3b8;">Target</span>
+<span style="font-weight:800; color:#10b981;">₹{rp.get('target', 0):,.2f}</span>
+</div>
+<hr style="border:0.5px solid #334155; margin:10px 0;">
+<div style="display:flex; justify-content:space-between; font-size:0.8rem;">
+<span style="color:#64748b;">Risk Amount (Max Loss)</span>
+<span style="color:#ef4444; font-weight:800;">₹{rp.get('risk_amt', 0):,.0f}</span>
+</div>
+<div style="display:flex; justify-content:space-between; font-size:0.8rem; margin-top:4px;">
+<span style="color:#64748b;">Reward (Target Profit)</span>
+<span style="color:#10b981; font-weight:800;">₹{rp.get('profit_amt', 0):,.0f}</span>
+</div>
+<div style="display:flex; justify-content:space-between; font-size:0.8rem; margin-top:4px;">
+<span style="color:#64748b;">{qty_label}</span>
+<span style="color:#38bdf8; font-weight:800;">{rp.get('pos_size', 0)} Shares</span>
+</div>
+<div style="display:flex; justify-content:space-between; font-size:0.8rem; margin-top:4px;">
+<span style="color:#64748b;">Risk/Reward Ratio</span>
+<span style="color:#f8fafc; font-weight:700;">{rp.get('risk_reward', '1:2')}</span>
+</div>'''
 
         st.markdown(f'''<div style="background: {v_col}10; border: 2px solid {v_col}; padding: 30px; border-radius: 20px; border-left: 10px solid {v_col}; margin-bottom:30px;">
 <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:20px;">

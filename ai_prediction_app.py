@@ -4366,7 +4366,26 @@ def page_prediction():
 </div>
 <div style="background:rgba(0,0,0,0.3); padding:20px; border-radius:15px; border:1px solid rgba(255,255,255,0.05); text-align:left;">
 {exec_html}
-<div style="margin-top:20px; padding-top:10px; border-top:1px solid #334155;">
+<div style="margin-top:15px; padding-top:10px; border-top:1px solid #334155;">
+<div style="font-size:0.65rem; color:#64748b; margin-bottom:8px; font-weight:700; text-transform:uppercase;">🏛️ Order Block Info</div>
+<div style="display:flex; justify-content:space-between; font-size:0.8rem; margin-bottom:4px;">
+<span style="color:#94a3b8;">OB Type</span>
+<span style="font-weight:700; color:{'#10b981' if closest_ob and closest_ob['type'] == 'Bullish' else '#ef4444' if closest_ob else '#64748b'};">{ob_type} <span style="background:{'#6366f1' if ob_tf_label != 'N/A' else '#334155'}; color:white; padding:1px 6px; border-radius:4px; font-size:0.6rem; font-weight:800;">{ob_tf_label}</span></span>
+</div>
+<div style="display:flex; justify-content:space-between; font-size:0.8rem; margin-bottom:4px;">
+<span style="color:#94a3b8;">Zone</span>
+<span style="font-weight:700; color:#e2e8f0; font-family:monospace;">{ob_zone}</span>
+</div>
+<div style="display:flex; justify-content:space-between; font-size:0.8rem; margin-bottom:4px;">
+<span style="color:#94a3b8;">Distance to OB</span>
+<span style="font-weight:700; color:{'#10b981' if ob_dist <= 1.0 else '#f59e0b' if ob_dist <= 3.0 else '#64748b'};">{f"{ob_dist:.2f}%" if ob_dist != 999.0 else "N/A"}</span>
+</div>
+<div style="display:flex; justify-content:space-between; font-size:0.8rem;">
+<span style="color:#94a3b8;">OB Age</span>
+<span style="font-weight:700; color:#cbd5e1;">{ob_age_str}</span>
+</div>
+</div>
+<div style="margin-top:15px; padding-top:10px; border-top:1px solid #334155;">
 <div style="font-size:0.65rem; color:#64748b; margin-bottom:10px; font-weight:700; text-transform:uppercase;">Confidence Breakdown</div>
 {bd_html}
 </div>

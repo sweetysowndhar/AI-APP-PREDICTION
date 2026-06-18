@@ -1362,7 +1362,7 @@ class AIEngine:
         self.save_model() # Persist after training
         return {'d1_acc': self.models[symbol]['d1']['acc'], 'd2_acc': self.models[symbol]['d2']['acc'], 'd3_acc': self.models[symbol]['d3']['acc'], 'd4_acc': self.models[symbol]['d4']['acc']}
 
-    def predict(self, symbol, prices, volumes, news_sent=0.0, tv_sent=0.0, intraday=False, df=None, df_1h=None, df_1d=None):
+    def predict(self, symbol, prices, volumes, news_sent=0.0, tv_sent=0.0, intraday=False, df=None, df_1h=None, df_1d=None, df_15m=None):
         if symbol not in self.models:
             if not self.load_model() or symbol not in self.models: return None
         
@@ -1373,6 +1373,7 @@ class AIEngine:
         mtf_data = {}
         if df_1h is not None: mtf_data["1h"] = self.get_timeframe_status(df_1h)
         if df_1d is not None: mtf_data["1d"] = self.get_timeframe_status(df_1d)
+        if df_15m is not None: mtf_data["15m"] = self.get_timeframe_status(df_15m)
         
         # 2. Global Index Momentum (correlation)
         if hasattr(self, '_cached_g_mom'):
@@ -1395,6 +1396,14 @@ class AIEngine:
             if mtf_data["1d"]["trend"] != main_status["trend"]: 
                 mtf_alignment *= 0.8
                 is_conflict = True
+        
+        triple_confirm = None
+        if "15m" in mtf_data and "1h" in mtf_data and "1d" in mtf_data:
+            trend_15m = mtf_data["15m"]["trend"]
+            trend_1h = mtf_data["1h"]["trend"]
+            trend_1d = mtf_data["1d"]["trend"]
+            if trend_15m == trend_1h == trend_1d:
+                triple_confirm = trend_15m
         
         # 4. Feature Extraction for current point
         prices_arr = np.array(prices, dtype=float)
@@ -1459,7 +1468,10 @@ class AIEngine:
         
         is_mtf_sync = False
         if "1d" in mtf_data and "1h" in mtf_data:
-            is_mtf_sync = (mtf_data["1d"]["trend"] == mtf_data["1h"]["trend"] == main_status["trend"])
+            if "15m" in mtf_data:
+                is_mtf_sync = (mtf_data["1d"]["trend"] == mtf_data["1h"]["trend"] == mtf_data["15m"]["trend"] == main_status["trend"])
+            else:
+                is_mtf_sync = (mtf_data["1d"]["trend"] == mtf_data["1h"]["trend"] == main_status["trend"])
             if is_mtf_sync: mtf_alignment *= 1.2 # Bonus for sync
 
         is_trending = f_latest[-1] > 0.5 
@@ -1633,6 +1645,8 @@ class AIEngine:
         results['fib_levels'] = fib_levels
         results['mtf_status'] = mtf_data
         results['volatility'] = vol_label
+        results['triple_confirm'] = triple_confirm
+        results['liquidity_sweep'] = self.detect_liquidity_sweeps(df)
         return results
 
     def get_timeframe_status(self, df):
@@ -1657,6 +1671,55 @@ class AIEngine:
         elif rsi < 30: score += 0.1 # Oversold
         
         return {"trend": trend, "rsi": round(rsi, 2), "score": round(score, 2), "pattern": "N/A"}
+
+    @staticmethod
+    def detect_liquidity_sweeps(df, window=2, lookback=20):
+        """
+        Identify institutional liquidity sweeps where the price hunts stops past swing peaks/troughs before reversing.
+        """
+        if df is None or len(df) < window * 2 + 1:
+            return {"bullish": False, "bearish": False}
+        
+        df = df.copy()
+        highs = df['High'].values
+        lows = df['Low'].values
+        closes = df['Close'].values
+        
+        # 1. Identify swing points
+        swing_highs = []
+        swing_lows = []
+        for i in range(window, len(df) - window):
+            if highs[i] == max(highs[i-window : i+window+1]):
+                swing_highs.append((i, highs[i]))
+            if lows[i] == min(lows[i-window : i+window+1]):
+                swing_lows.append((i, lows[i]))
+        
+        bullish_sweep = False
+        bearish_sweep = False
+        
+        # 2. Check the latest two candles
+        for idx in [len(df) - 2, len(df) - 1]:
+            if idx < 0 or idx >= len(df):
+                continue
+            current_low = lows[idx]
+            current_high = highs[idx]
+            current_close = closes[idx]
+            
+            # Bullish sweep
+            recent_lows = [val for pos, val in swing_lows if pos < idx and idx - pos <= lookback]
+            if recent_lows:
+                min_recent_low = min(recent_lows)
+                if current_low < min_recent_low and current_close > min_recent_low:
+                    bullish_sweep = True
+                    
+            # Bearish sweep
+            recent_highs = [val for pos, val in swing_highs if pos < idx and idx - pos <= lookback]
+            if recent_highs:
+                max_recent_high = max(recent_highs)
+                if current_high > max_recent_high and current_close < max_recent_high:
+                    bearish_sweep = True
+                    
+        return {"bullish": bullish_sweep, "bearish": bearish_sweep}
 
     @staticmethod
     def detect_smc_features(df):
@@ -2939,47 +3002,96 @@ def build_tradingview_market_news():
     """
 
 def render_sector_heatmap():
-    """Step 6: Sector Money Flow Engine"""
+    """Step 6: Sector Money Flow Engine (Dynamic Heatmap)"""
     st.markdown('<div class="section-head">🔥 Sector Money Flow (Live Leaders)</div>', unsafe_allow_html=True)
     
     sectors = {
-        "Banking": {"emoji": "🏦", "stocks": ["HDFCBANK.NS", "ICICIBANK.NS", "SBIN.NS"]},
-        "IT": {"emoji": "💻", "stocks": ["TCS.NS", "INFY.NS", "HCLTECH.NS"]},
-        "Auto": {"emoji": "🚗", "stocks": ["TATAMOTORS.NS", "MARUTI.NS", "M&M.NS"]},
-        "Energy": {"emoji": "⚡", "stocks": ["RELIANCE.NS", "ONGC.NS", "BPCL.NS"]},
-        "Pharma": {"emoji": "💊", "stocks": ["SUNPHARMA.NS", "CIPLA.NS", "DRREDDY.NS"]}
+        "Banking": {
+            "emoji": "🏦",
+            "stocks": ["HDFCBANK", "ICICIBANK", "SBIN", "KOTAKBANK"]
+        },
+        "IT & Tech": {
+            "emoji": "💻",
+            "stocks": ["TCS", "INFY", "HCLTECH", "WIPRO"]
+        },
+        "Auto & EV": {
+            "emoji": "🚗",
+            "stocks": ["TATAMOTORS", "MARUTI", "M&M", "TVSMOTOR"]
+        },
+        "Metal & Mining": {
+            "emoji": "🏭",
+            "stocks": ["TATASTEEL", "JSWSTEEL", "HINDALCO", "VEDL"]
+        },
+        "Oil & Gas": {
+            "emoji": "⛽",
+            "stocks": ["RELIANCE", "ONGC", "BPCL", "IOC"]
+        },
+        "Power & Energy": {
+            "emoji": "⚡",
+            "stocks": ["NTPC", "POWERGRID", "TATAPOWER", "JSWENERGY"]
+        },
+        "FMCG & Retail": {
+            "emoji": "🛒",
+            "stocks": ["HINDUNILVR", "ITC", "TATACONSUM", "BRITANNIA"]
+        },
+        "Railways & Infra": {
+            "emoji": "🚂",
+            "stocks": ["IRCTC", "IRFC", "RVNL", "LT"]
+        }
     }
     
-    cols = st.columns(len(sectors))
-    
-    for i, (name, sdata) in enumerate(sectors.items()):
-        total_chg = 0
-        leaders = []
-        
-        for stock in sdata["stocks"]:
-            info = get_price_info(stock, 1)
-            if info:
-                total_chg += info['pct']
-                if info['pct'] > 0:
-                    leaders.append(f"{stock.split('.')[0]} 🔥")
-                else:
-                    leaders.append(f"{stock.split('.')[0]} ❄️")
-        
-        avg_chg = total_chg / len(sdata["stocks"]) if sdata["stocks"] else 0
-        status = "STRONG 🔥" if avg_chg > 0.5 else "WEAK ❌" if avg_chg < -0.5 else "NEUTRAL ⚖️"
-        color = "#00b386" if avg_chg > 0 else "#eb5b3c"
-        
-        with cols[i]:
-            st.markdown(f"""
-                <div style="background: {color}10; border: 1px solid {color}30; padding: 15px; border-radius: 12px; height: 160px;">
-                    <div style="font-size: 0.7rem; color: #94a3b8; text-transform: uppercase; font-weight: 700;">{sdata['emoji']} {name}</div>
-                    <div style="font-size: 1.2rem; font-weight: 900; color: {color}; margin: 5px 0;">{status}</div>
-                    <div style="font-size: 1.1rem; font-weight: 700; color: {color};">{avg_chg:+.2f}%</div>
-                    <div style="font-size: 0.65rem; color: #64748b; margin-top: 10px; border-top: 1px solid #334155; padding-top: 5px;">
-                        {' | '.join(leaders[:2])}
+    sectors_items = list(sectors.items())
+    for row_idx in range(2):
+        cols = st.columns(4)
+        for col_idx in range(4):
+            i = row_idx * 4 + col_idx
+            if i >= len(sectors_items):
+                break
+            name, sdata = sectors_items[i]
+            total_chg = 0
+            valid_count = 0
+            leaders = []
+            
+            for stock in sdata["stocks"]:
+                info = get_price_info(stock, 5)
+                if info:
+                    total_chg += info['pct']
+                    valid_count += 1
+                    symbol_display = info['symbol']
+                    if info['pct'] > 0:
+                        leaders.append(f"{symbol_display} 🔥")
+                    else:
+                        leaders.append(f"{symbol_display} ❄️")
+            
+            avg_chg = total_chg / valid_count if valid_count > 0 else 0.0
+            status = "STRONG 🔥" if avg_chg > 0.5 else "WEAK ❌" if avg_chg < -0.5 else "NEUTRAL ⚖️"
+            
+            if avg_chg > 0.5:
+                color = "#10b981"
+                bg_opacity = "rgba(16, 185, 129, 0.08)"
+                border_color = "rgba(16, 185, 129, 0.25)"
+            elif avg_chg < -0.5:
+                color = "#ef4444"
+                bg_opacity = "rgba(239, 68, 68, 0.08)"
+                border_color = "rgba(239, 68, 68, 0.25)"
+            else:
+                color = "#94a3b8"
+                bg_opacity = "rgba(148, 163, 184, 0.05)"
+                border_color = "rgba(148, 163, 184, 0.15)"
+                
+            with cols[col_idx]:
+                st.markdown(f"""
+                    <div style="background: {bg_opacity}; border: 1px solid {border_color}; padding: 16px; border-radius: 12px; height: 165px; margin-bottom: 16px; box-shadow: 0 4px 10px rgba(0,0,0,0.2);">
+                        <div style="font-size: 0.75rem; color: #94a3b8; text-transform: uppercase; font-weight: 700; display: flex; align-items: center; gap: 4px;">
+                            <span>{sdata['emoji']}</span> {name}
+                        </div>
+                        <div style="font-size: 1.15rem; font-weight: 900; color: {color}; margin: 8px 0 2px 0;">{status}</div>
+                        <div style="font-size: 1.25rem; font-weight: 900; color: #ffffff;">{avg_chg:+.2f}%</div>
+                        <div style="font-size: 0.65rem; color: #64748b; margin-top: 10px; border-top: 1px solid rgba(255,255,255,0.06); padding-top: 6px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
+                            {' | '.join(leaders[:3])}
+                        </div>
                     </div>
-                </div>
-            """, unsafe_allow_html=True)
+                """, unsafe_allow_html=True)
 
 
 
@@ -3148,33 +3260,64 @@ def page_explore():
         setups = scan_institutional_setups(scan_target)
         
     if setups:
-        cols = st.columns(min(4, len(setups)))
-        for i, setup in enumerate(setups[:4]):
+        rows_html = ""
+        for i, setup in enumerate(setups[:10]):
+            rank = i + 1
+            if rank == 1:
+                rank_str = '<span style="color: #fbbf24; font-weight: 950; font-size: 1.15rem;">#1 👑</span>'
+            elif rank == 2:
+                rank_str = '<span style="color: #cbd5e1; font-weight: 950; font-size: 1.1rem;">#2</span>'
+            elif rank == 3:
+                rank_str = '<span style="color: #b45309; font-weight: 950; font-size: 1.1rem;">#3</span>'
+            else:
+                rank_str = f'<span style="color: #64748b; font-weight: 800;">#{rank}</span>'
+                
             sig_color = "#10b981" if "BUY" in setup['signal'] else "#ef4444"
-            sig_bg = "rgba(16, 185, 129, 0.1)" if "BUY" in setup['signal'] else "rgba(239, 68, 68, 0.1)"
-            stars_str = '⭐' * setup['stars']
+            sig_bg = "rgba(16, 185, 129, 0.15)" if "BUY" in setup['signal'] else "rgba(239, 68, 68, 0.15)"
             
             is_indian = setup['ticker'].endswith('.NS') or setup['ticker'].endswith('.BO') or setup['ticker'].startswith('^')
             curr = '₹' if is_indian else '$'
             
-            with cols[i]:
-                st.markdown(f'''<div class="stock-card" style="border-top: 4px solid {sig_color}; height: 230px; display: flex; flex-direction: column; justify-content: space-between; margin: 0; box-shadow: 0 4px 15px rgba(0, 0, 0, 0.35);">
-<div>
-<div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
-<span style="font-size: 1.1rem; font-weight: 900; color: #f8fafc;">🔥 {setup['symbol']}</span>
-<span style="font-size: 0.7rem; font-weight: 800; background: {sig_bg}; color: {sig_color}; padding: 2px 8px; border-radius: 8px;">{setup['signal']}</span>
-</div>
-<div style="font-size: 1.25rem; font-weight: 900; color: #fbbf24; margin-bottom: 10px;">{curr}{setup['price']:,.2f}</div>
-<div style="font-size: 0.8rem; color: #cbd5e1; margin-bottom: 6px;">🎯 Confluence: <span style="font-weight:700; color:{sig_color};">{setup['confidence']:.0%}</span></div>
-<div style="font-size: 0.8rem; color: #cbd5e1; margin-bottom: 6px;">📐 Setup: <span style="font-weight:700; color:#fbbf24;">{stars_str}</span></div>
-<div style="font-size: 0.75rem; color: #94a3b8; font-family: monospace; margin-bottom: 4px;">OB Zone: {setup['ob_zone']}</div>
-<div style="font-size: 0.75rem; color: #94a3b8; font-family: monospace; margin-bottom: 4px;">OB Dist: {setup['ob_dist']:.2f}%</div>
-</div>
-<div style="border-top: 1px dashed rgba(255,255,255,0.08); margin-top: 10px; padding-top: 8px; font-size: 0.7rem; color: #10b981; font-weight: 600;">
-🛡️ {setup['freshness']}% Fresh ({setup['age']})
-</div>
-</div>''', unsafe_allow_html=True)
-        st.markdown("<br>", unsafe_allow_html=True)
+            direction_badge = f'<span style="background: {sig_bg}; color: {sig_color}; padding: 4px 10px; border-radius: 6px; font-size: 0.75rem; font-weight: 800; display: inline-block;">{setup["signal"]}</span>'
+            
+            stars_str = '★' * setup['stars'] + '☆' * (5 - setup['stars'])
+            row_bg = "rgba(255, 255, 255, 0.02)" if i % 2 == 0 else "transparent"
+            
+            rows_html += f"""
+            <tr style="border-bottom: 1px solid rgba(255, 255, 255, 0.04); background: {row_bg}; font-size: 0.85rem;">
+                <td style="padding: 14px 16px; font-weight: 800;">{rank_str}</td>
+                <td style="padding: 14px 16px;"><span style="font-weight: 900; color: #ffffff;">{setup['symbol']}</span><br><span style="font-size: 0.65rem; color: #64748b; font-family: monospace;">{setup['ticker']}</span></td>
+                <td style="padding: 14px 16px;">{direction_badge}</td>
+                <td style="padding: 14px 16px;"><span style="font-family: monospace; font-weight: 700; color: #f1f5f9;">{curr}{setup['price']:,.2f}</span></td>
+                <td style="padding: 14px 16px; text-align: center;"><span style="font-weight: 900; color: {sig_color}; font-size: 1rem;">{setup['confidence']:.0%}</span></td>
+                <td style="padding: 14px 16px; text-align: center; color: #fbbf24; font-size: 0.9rem; letter-spacing: 1px;">{stars_str}</td>
+                <td style="padding: 14px 16px; text-align: center;"><span style="font-family: monospace; font-weight: 700; color: #f3f4f6;">{setup['ob_dist']:.2f}%</span><br><span style="font-size: 0.65rem; color: #64748b;">({setup['ob_type']})</span></td>
+                <td style="padding: 14px 16px; text-align: right;"><span style="color: #10b981; font-weight: 700;">{setup['freshness']}%</span><br><span style="font-size: 0.7rem; color: #94a3b8;">{setup['age']}</span></td>
+            </tr>
+            """
+            
+        table_html = f"""
+        <div style="background: rgba(17, 24, 39, 0.45); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); border-radius: 16px; border: 1px solid rgba(255, 255, 255, 0.05); padding: 20px; box-shadow: 0 4px 30px rgba(0, 0, 0, 0.25); overflow-x: auto; margin-bottom: 25px;">
+            <table style="width: 100%; border-collapse: collapse; text-align: left; color: #f8fafc; font-family: 'Inter', sans-serif;">
+                <thead>
+                    <tr style="border-bottom: 2px solid rgba(255, 255, 255, 0.08); color: #94a3b8; font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.5px;">
+                        <th style="padding: 12px 16px; font-weight: 800;">Rank</th>
+                        <th style="padding: 12px 16px; font-weight: 800;">Stock</th>
+                        <th style="padding: 12px 16px; font-weight: 800;">Direction</th>
+                        <th style="padding: 12px 16px; font-weight: 800;">Price</th>
+                        <th style="padding: 12px 16px; font-weight: 800; text-align: center;">Confluence</th>
+                        <th style="padding: 12px 16px; font-weight: 800; text-align: center;">Stars</th>
+                        <th style="padding: 12px 16px; font-weight: 800; text-align: center;">Distance to OB</th>
+                        <th style="padding: 12px 16px; font-weight: 800; text-align: right;">Freshness</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {rows_html}
+                </tbody>
+            </table>
+        </div>
+        """
+        st.markdown(table_html, unsafe_allow_html=True)
     else:
         st.info("⚖️ No high-probability Institutional Order Block setups found in this scan. Try switching to 'All 350+ Stocks' or check back later.")
         st.markdown("<br>", unsafe_allow_html=True)
@@ -3458,9 +3601,10 @@ def page_prediction():
             with st.spinner("📡 Fetching Multi-Timeframe data (Daily, 1H, 15m)..."):
                 df_1d, _ = fetch_stock(symbol, days=250, interval='1d')
                 df_1h, _ = fetch_stock(symbol, period='1mo', interval='1h')
+                df_15m, _ = fetch_stock(symbol, period='14d', interval='15m')
                 
                 if is_intra:
-                    df_run, _ = fetch_stock(symbol, interval='15m', period='14d')
+                    df_run = df_15m
                 else:
                     df_run = df_1d # Daily is main for swing
 
@@ -3473,7 +3617,9 @@ def page_prediction():
                     local_news = fetch_market_news(f"{symbol} share stock market news")
                     master_sent = get_master_market_sentiment()
                     
-                    st.session_state.pred_catalyst = master_sent['global_reason']
+                    st.session_state.pred_local_catalyst = master_sent['local_reason']
+                    st.session_state.pred_global_catalyst = master_sent['global_reason']
+                    st.session_state.pred_catalyst = f"India: {master_sent['local_reason']} | Global: {master_sent['global_reason']}"
                     st.session_state.pred_indian_news = analyze_news(local_news)[1][:5]
                     st.session_state.pred_global_news = master_sent['global_headlines']
                     sent = master_sent['score']
@@ -3486,7 +3632,7 @@ def page_prediction():
                     tv_sentiment = fetch_tv_sentiment(symbol, mapped)
                 
                 if metrics:
-                    res = st.session_state.engine.predict(symbol, prices, volumes, sent, tv_sent=tv_sentiment, intraday=is_intra, df=df_run, df_1h=df_1h, df_1d=df_1d)
+                    res = st.session_state.engine.predict(symbol, prices, volumes, sent, tv_sent=tv_sentiment, intraday=is_intra, df=df_run, df_1h=df_1h, df_1d=df_1d, df_15m=df_15m)
                     st.session_state.pred_results = res
                     
                     # NEW: Step 1, 3 & 5 Integration
@@ -3872,28 +4018,17 @@ def page_prediction():
 </div>
 </div>''', unsafe_allow_html=True)
 
-        # 4. EXECUTIVE REASONING SECTION (Separated Indian & Global News)
-        st.markdown('<div class="section-head">🧠 AI Sentiment Pulse (Local vs Global)</div>', unsafe_allow_html=True)
+        # 4. Sentiment Catalyst Summary (India vs Global)
+        st.markdown('<div class="section-head">🧠 Sentiment Catalyst (India vs Global)</div>', unsafe_allow_html=True)
+        local_cat = st.session_state.get('pred_local_catalyst', 'Stable domestic market conditions.')
+        global_cat = st.session_state.get('pred_global_catalyst', 'Neutral global queues.')
         
-        catalyst = st.session_state.get('pred_catalyst', 'No major catalyst detected.')
-        st.markdown(f'''<div style="background: rgba(99,102,241,0.1); border: 1px solid rgba(99,102,241,0.3); border-left: 6px solid #6366f1; padding: 15px 20px; border-radius: 10px; margin-bottom: 20px;">
-<div style="font-size: 0.75rem; color: #94a3b8; text-transform: uppercase; font-weight: 800; margin-bottom: 5px;">Unified Market Driver (Primary Reason)</div>
-<div style="font-size: 1.1rem; color: #f8fafc; font-weight: 600;">{catalyst}</div>
-</div>''', unsafe_allow_html=True)
-
-        sc1, sc2 = st.columns(2)
-        with sc1:
-            st.markdown("### 🇮🇳 Indian Catalysts")
-            i_news = st.session_state.get('pred_indian_news', [])
-            for h in i_news:
-                scls = {'positive':'sentiment-pos','negative':'sentiment-neg'}.get(h['label'],'sentiment-neu')
-                st.markdown(f'''<div class="news-card"><span class="{scls}">[{h["label"].upper()}]</span> {h["title"]}</div>''', unsafe_allow_html=True)
-        with sc2:
-            st.markdown("### 🌎 Global Market Drivers")
-            g_news = st.session_state.get('pred_global_news', [])
-            for h in g_news:
-                scls = {'positive':'sentiment-pos','negative':'sentiment-neg'}.get(h['label'],'sentiment-neu')
-                st.markdown(f'''<div class="news-card"><span class="{scls}">[{h["label"].upper()}]</span> {h["title"]}</div>''', unsafe_allow_html=True)
+        st.markdown(f'''
+        <div style="background: rgba(99,102,241,0.08); border: 1px solid rgba(99,102,241,0.2); border-left: 6px solid #6366f1; padding: 15px 20px; border-radius: 10px; margin-bottom: 20px; font-size: 0.9rem; line-height: 1.5; color: #cbd5e1;">
+            <b>🇮🇳 India Catalyst:</b> {local_cat}<br>
+            <b>🌎 Global Driver:</b> {global_cat}
+        </div>
+        ''', unsafe_allow_html=True)
 
         # 5. CANDLE CHART
         st.markdown('<div class="section-head">📊 Market Pulse & Patterns</div>', unsafe_allow_html=True)
@@ -4044,6 +4179,25 @@ def page_prediction():
         if "READY" in timing: badge_html = f'<span style="background:#f59e0b; color:white; padding:4px 10px; border-radius:6px; font-size:0.6rem; margin-right:8px;">READY</span>'
         elif "DETECTED" in timing: badge_html = f'<span style="background:#10b981; color:white; padding:4px 10px; border-radius:6px; font-size:0.6rem; margin-right:8px;">DETECTED</span>'
         
+        # New advanced badges: Triple Timeframe Confirmation & Liquidity Sweep
+        mtf_badge_html = ""
+        tc_val = pred.get('triple_confirm')
+        if tc_val == 'Bullish':
+            mtf_badge_html = '<span style="background: rgba(16, 185, 129, 0.15); color: #10b981; border: 1px solid rgba(16, 185, 129, 0.3); padding: 4px 10px; border-radius: 6px; font-size: 0.65rem; font-weight: 800; margin-right: 8px; display: inline-block; box-shadow: 0 0 6px rgba(16, 185, 129, 0.2);">🔥 TRIPLE TIMEFRAME CONFIRMATION: BULLISH</span>'
+        elif tc_val == 'Bearish':
+            mtf_badge_html = '<span style="background: rgba(239, 68, 68, 0.15); color: #ef4444; border: 1px solid rgba(239, 68, 68, 0.3); padding: 4px 10px; border-radius: 6px; font-size: 0.65rem; font-weight: 800; margin-right: 8px; display: inline-block; box-shadow: 0 0 6px rgba(239, 68, 68, 0.2);">💥 TRIPLE TIMEFRAME CONFIRMATION: BEARISH</span>'
+            
+        sweep_badge_html = ""
+        sweep_val = pred.get('liquidity_sweep', {})
+        if sweep_val.get('bullish'):
+            sweep_badge_html = '<span style="background: rgba(16, 185, 129, 0.15); color: #10b981; border: 1px solid rgba(16, 185, 129, 0.3); padding: 4px 10px; border-radius: 6px; font-size: 0.65rem; font-weight: 800; margin-right: 8px; display: inline-block; box-shadow: 0 0 6px rgba(16, 185, 129, 0.2);">⚡ BULLISH LIQUIDITY SWEEP DETECTED</span>'
+        elif sweep_val.get('bearish'):
+            sweep_badge_html = '<span style="background: rgba(239, 68, 68, 0.15); color: #ef4444; border: 1px solid rgba(239, 68, 68, 0.3); padding: 4px 10px; border-radius: 6px; font-size: 0.65rem; font-weight: 800; margin-right: 8px; display: inline-block; box-shadow: 0 0 6px rgba(239, 68, 68, 0.2);">⚡ BEARISH LIQUIDITY SWEEP DETECTED</span>'
+
+        advanced_badges_html = ""
+        if mtf_badge_html or sweep_badge_html:
+            advanced_badges_html = f'<div style="margin-bottom: 15px; display: flex; flex-wrap: wrap; gap: 8px;">{mtf_badge_html}{sweep_badge_html}</div>'
+
         # Step 4 (v3): Quality Stars
         stars_count = pred['today'].get('stars', 3)
         stars_html = f'<span style="color:#fcd34d; font-size:1.2rem; margin-left:10px;">{"★" * stars_count}{"☆" * (5-stars_count)}</span>'
@@ -4129,6 +4283,7 @@ def page_prediction():
 <div style="color:#94a3b8; font-weight:700; font-size:0.85rem; background:rgba(255,255,255,0.05); padding:4px 12px; border-radius:10px;">{liq}</div>
 </div>
 </div>
+{advanced_badges_html}
 <div style="display:grid; grid-template-columns: 1.5fr 1fr; gap:25px; align-items:center;">
 <div>
 <h1 style="margin:0; color:{v_col}; font-size: 3.2rem; font-weight: 950; letter-spacing:-1px;">{v_sig}</h1>

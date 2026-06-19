@@ -2113,10 +2113,11 @@ class AIEngine:
             fvg_score = 0.0
             closest_fvg = None
             closest_fvg_dist_pct = 0.0
-            if smc['fvg']:
+            all_fvgs = smc.get('active_bullish_fvg', []) + smc.get('active_bearish_fvg', [])
+            if all_fvgs:
                 best_fvg = None
                 min_dist = float('inf')
-                for fvg in smc['fvg']:
+                for fvg in all_fvgs:
                     # Bullish ML -> look for Bullish FVG below price
                     if ml_side == 1 and fvg['type'] == 'Bullish' and current_price >= fvg['top']:
                         dist = current_price - fvg['top']

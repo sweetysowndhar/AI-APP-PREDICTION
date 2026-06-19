@@ -1870,7 +1870,7 @@ class AIEngine:
         self.save_model() # Persist after training
         return {'d1_acc': self.models[symbol]['d1']['acc'], 'd2_acc': self.models[symbol]['d2']['acc'], 'd3_acc': self.models[symbol]['d3']['acc'], 'd4_acc': self.models[symbol]['d4']['acc']}
 
-    def predict(self, symbol, prices, volumes, news_sent=0.0, tv_sent=0.0, intraday=False, df=None, df_1h=None, df_1d=None, df_15m=None):
+    def predict(self, symbol, prices, volumes, news_sent=0.0, tv_sent=0.0, sector_score=0.0, event_score=0.0, intraday=False, df=None, df_1h=None, df_1d=None, df_15m=None):
         if symbol not in self.models:
             if not self.load_model() or symbol not in self.models: return None
         
@@ -2010,7 +2010,9 @@ class AIEngine:
         
         news_val = (news_sent + 1.0) / 2.0
         tv_val = (tv_sent + 1.0) / 2.0
-        sentiment_score = (news_val + tv_val) / 2.0
+        sec_val = (sector_score + 1.0) / 2.0
+        evt_val = (event_score + 1.0) / 2.0
+        sentiment_score = (news_val + tv_val + sec_val + evt_val) / 4.0
         
         # Detect Liquidity Sweeps
         liquidity_sweep = self.detect_liquidity_sweeps(df)

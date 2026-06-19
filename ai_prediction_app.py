@@ -2193,6 +2193,7 @@ class AIEngine:
             results[label] = {
                 'signal': sig, 'confidence': round(final_score, 4), 'stars': stars,
                 'ml_prob': round(raw_prob, 4), 'tech_score': main_status['score'],
+                'pattern_score': round((fib_score + ob_score) / 2.0, 4),
                 'is_trending': is_trending,
                 'scores': {
                     'ml_score': round(ml_score, 4),

@@ -1,0 +1,462 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sowndhar D - BE CSE Resume</title>
+    <style>
+        @page {
+            size: A4;
+            margin: 0;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: #f5f5f5;
+            line-height: 1.4;
+            color: #333;
+        }
+
+        .resume-container {
+            width: 210mm;
+            height: 297mm;
+            margin: 0 auto;
+            background: white;
+            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.1);
+            display: grid;
+            grid-template-columns: 225px 1fr;
+            overflow: hidden;
+        }
+
+        .sidebar {
+            background: linear-gradient(135deg, #fbe4e7 0%, #f4c2c2 100%);
+            padding: 22px 18px;
+            color: #333;
+            min-height: 100%;
+        }
+
+        .sidebar h1 {
+            font-size: 22px;
+            font-weight: 700;
+            letter-spacing: 1.5px;
+            margin-bottom: 2px;
+        }
+
+        .sidebar .subtitle {
+            font-size: 9px;
+            font-weight: 400;
+            margin-bottom: 18px;
+            letter-spacing: 1px;
+            text-transform: uppercase;
+            color: #d4567a;
+        }
+
+        .sidebar-section {
+            margin-bottom: 16px;
+        }
+
+        .sidebar-section h3 {
+            font-size: 10px;
+            font-weight: 600;
+            letter-spacing: 1.5px;
+            text-transform: uppercase;
+            margin-bottom: 8px;
+            border-bottom: 1.5px solid rgba(212, 86, 122, 0.3);
+            padding-bottom: 5px;
+            color: #d4567a;
+        }
+
+        .sidebar-item {
+            margin-bottom: 7px;
+            font-size: 10px;
+            line-height: 1.35;
+            color: #555;
+        }
+
+        .sidebar-item strong {
+            display: block;
+            font-weight: 600;
+            margin-bottom: 1px;
+            color: #1a1a1a;
+        }
+
+        .sidebar-skill-list {
+            list-style: none;
+            padding: 0;
+        }
+
+        .sidebar-skill-list li {
+            font-size: 10px;
+            color: #555;
+            margin-bottom: 4px;
+            padding-left: 12px;
+            position: relative;
+        }
+
+        .sidebar-skill-list li:before {
+            content: "•";
+            position: absolute;
+            left: 0;
+            color: #d4567a;
+            font-weight: bold;
+        }
+
+        .main-content {
+            padding: 22px 26px;
+            background: #f9f9f9;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+            min-height: 100%;
+        }
+
+        .name-title {
+            margin-bottom: 14px;
+            border-bottom: 2.5px solid #d4567a;
+            padding-bottom: 8px;
+        }
+
+        .name-title h2 {
+            font-size: 22px;
+            font-weight: 700;
+            color: #1a1a1a;
+            margin-bottom: 2px;
+        }
+
+        .job-title {
+            font-size: 11px;
+            font-weight: 500;
+            color: #d4567a;
+            letter-spacing: 1px;
+            text-transform: uppercase;
+        }
+
+        section {
+            margin-bottom: 14px;
+        }
+
+        section h2 {
+            font-size: 12px;
+            font-weight: 700;
+            color: #1a1a1a;
+            margin-bottom: 8px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            border-bottom: 1.5px solid #e0e0e0;
+            padding-bottom: 4px;
+        }
+
+        .summary-text {
+            font-size: 9.5px;
+            line-height: 1.55;
+            color: #444;
+            font-style: italic;
+        }
+
+        /* Education */
+        .edu-entry {
+            margin-bottom: 8px;
+            padding-bottom: 6px;
+            border-bottom: 1px solid #eee;
+        }
+
+        .edu-entry:last-child {
+            border-bottom: none;
+            margin-bottom: 0;
+            padding-bottom: 0;
+        }
+
+        .edu-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: baseline;
+            margin-bottom: 2px;
+        }
+
+        .edu-degree {
+            font-size: 11px;
+            font-weight: 600;
+            color: #1a1a1a;
+        }
+
+        .edu-year {
+            font-size: 9.5px;
+            color: #666;
+            font-weight: 500;
+        }
+
+        .edu-school {
+            font-size: 10px;
+            color: #d4567a;
+            font-weight: 500;
+        }
+
+        .edu-grade {
+            font-size: 9.5px;
+            color: #666;
+            margin-top: 1px;
+        }
+
+        /* Projects */
+        .project-entry {
+            margin-bottom: 8px;
+            padding-bottom: 6px;
+            border-bottom: 1px solid #eee;
+        }
+
+        .project-entry:last-child {
+            border-bottom: none;
+            margin-bottom: 0;
+            padding-bottom: 0;
+        }
+
+        .project-title {
+            font-size: 11px;
+            font-weight: 600;
+            color: #1a1a1a;
+            margin-bottom: 2px;
+        }
+
+        .project-tech {
+            font-size: 9px;
+            color: #d4567a;
+            font-weight: 500;
+            margin-bottom: 3px;
+        }
+
+        .project-desc {
+            font-size: 9.5px;
+            color: #555;
+            line-height: 1.45;
+        }
+
+        /* Certifications */
+        .cert-list {
+            list-style: none;
+            padding: 0;
+        }
+
+        .cert-list li {
+            font-size: 10px;
+            color: #555;
+            margin-bottom: 4px;
+            padding-left: 14px;
+            position: relative;
+            line-height: 1.4;
+        }
+
+        .cert-list li:before {
+            content: "•";
+            position: absolute;
+            left: 0;
+            color: #d4567a;
+            font-weight: bold;
+        }
+
+        /* Skills grid in main */
+        .skills-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 5px;
+        }
+
+        .skill-item {
+            font-size: 9.5px;
+            color: #555;
+            padding: 4px 7px;
+            background: white;
+            border-left: 2.5px solid #d4567a;
+            line-height: 1.3;
+        }
+
+        /* Declaration */
+        .declaration-text {
+            font-size: 9px;
+            color: #666;
+            line-height: 1.5;
+            font-style: italic;
+        }
+
+        @media print {
+            body { padding: 0; background: white; }
+            .resume-container { box-shadow: none; width: 100%; height: 100%; }
+        }
+    </style>
+</head>
+<body>
+    <div class="resume-container">
+
+        <!-- SIDEBAR -->
+        <div class="sidebar">
+            <h1>SOWNDHAR.D</h1>
+            <div class="subtitle">BE - Computer Science & Engineering</div>
+
+            <div class="sidebar-section">
+                <h3>Contact</h3>
+                <div class="sidebar-item">
+                    <strong>Email</strong>
+                    sowndhardeventhiren@gmail.com
+                </div>
+                <div class="sidebar-item">
+                    <strong>Phone</strong>
+                    +91 9344536941
+                </div>
+                <div class="sidebar-item">
+                    <strong>Address</strong>
+                    Vizhuperunthurai, Cuddalore(Dt),<br>
+                    Simudhram(Tk) - 608702
+                </div>
+            </div>
+
+            <div class="sidebar-section">
+                <h3>Technical Skills</h3>
+                <ul class="sidebar-skill-list">
+                    <li>HTML</li>
+                    <li>CSS</li>
+                    <li>JavaScript</li>
+                    <li>Python Basic</li>
+                    <li>Git and GitHub</li>
+                </ul>
+            </div>
+
+            <div class="sidebar-section">
+                <h3>Professional Skills</h3>
+                <ul class="sidebar-skill-list">
+                    <li>Communication</li>
+                    <li>Time Management</li>
+                    <li>Problem Solving</li>
+                    <li>Leadership</li>
+                    <li>Adaptability</li>
+                </ul>
+            </div>
+
+            <div class="sidebar-section">
+                <h3>Personal Details</h3>
+                <div class="sidebar-item">
+                    <strong>Nationality</strong>
+                    Indian
+                </div>
+                <div class="sidebar-item">
+                    <strong>Languages</strong>
+                    Tamil • English
+                </div>
+            </div>
+        </div>
+
+        <!-- MAIN CONTENT -->
+        <div class="main-content">
+
+            <div class="name-title">
+                <h2>SOWNDHAR.D</h2>
+                <div class="job-title">BE - Computer Science and Engineering</div>
+            </div>
+
+            <!-- About Me -->
+            <section>
+                <h2>About Me</h2>
+                <p class="summary-text">
+                    I am highly enthusiastic and results-driven professional with strong leadership.
+                    I possess exceptional time management skills that allow me to effectively prioritize
+                    and execute complex projects, consistently meeting deadlines. A genuine work enthusiasm
+                    drives my commitment to organizational goals, and I am a quick and adaptable learner,
+                    capable of rapidly mastering new technologies and processes to contribute immediate
+                    value to the team.
+                </p>
+            </section>
+
+            <!-- Education -->
+            <section>
+                <h2>Education</h2>
+
+                <div class="edu-entry">
+                    <div class="edu-header">
+                        <div class="edu-degree">Bachelor's Degree — BE CSE</div>
+                        <div class="edu-year">2022 - 2026</div>
+                    </div>
+                    <div class="edu-school">JKK Munirajah College of Technology, Erode</div>
+                    <div class="edu-grade">CGPA — 7.56</div>
+                </div>
+
+                <div class="edu-entry">
+                    <div class="edu-header">
+                        <div class="edu-degree">State Board — 12th</div>
+                        <div class="edu-year">2020 - 2022</div>
+                    </div>
+                    <div class="edu-school">Chandra Higher Secondary School, Sethiyathope</div>
+                    <div class="edu-grade">Percentage — 61%</div>
+                </div>
+
+                <div class="edu-entry">
+                    <div class="edu-header">
+                        <div class="edu-degree">State Board — SSLC</div>
+                        <div class="edu-year">2019 - 2020</div>
+                    </div>
+                    <div class="edu-school">Chandha Higher Secondary School, Sethiyathope</div>
+                    <div class="edu-grade">Percentage — 60.6%</div>
+                </div>
+            </section>
+
+            <!-- Projects -->
+            <section>
+                <h2>Projects</h2>
+
+                <div class="project-entry">
+                    <div class="project-title">1. Share Market Prediction App</div>
+                    <div class="project-tech">Python, Machine Learning, HTML, CSS, JavaScript</div>
+                    <div class="project-desc">
+                        Built an AI-powered share market prediction application that uses machine learning
+                        algorithms to analyze historical stock data and predict future price trends.
+                        Implemented data visualization dashboards for real-time market insights and
+                        portfolio tracking to assist investors in making informed decisions.
+                    </div>
+                </div>
+
+                <div class="project-entry">
+                    <div class="project-title">2. Real-Time Glare Remover</div>
+                    <div class="project-tech">Python, OpenCV</div>
+                    <div class="project-desc">
+                        Developed a real-time system to detect and reduce glare in CCTV camera footage
+                        using Python and OpenCV, improving image clarity for surveillance applications.
+                    </div>
+                </div>
+
+                <div class="project-entry">
+                    <div class="project-title">3. E-Commerce Website</div>
+                    <div class="project-tech">HTML, CSS, JavaScript</div>
+                    <div class="project-desc">
+                        Built a fully functional e-commerce website with product listings, shopping cart,
+                        and responsive design using front-end web technologies.
+                    </div>
+                </div>
+            </section>
+
+            <!-- Certifications -->
+            <section>
+                <h2>Certifications</h2>
+                <ul class="cert-list">
+                    <li>Skill Intern Certificate for Web Developer</li>
+                    <li>Internship on 15 days for Web Development Certificate</li>
+                    <li>Attended a 2-day Workshop on Data Analytics</li>
+                    <li>Python Basic Internship for 7 days</li>
+                </ul>
+            </section>
+
+            <!-- Declaration -->
+            <section>
+                <h2>Declaration</h2>
+                <p class="declaration-text">
+                    I hereby declare that the information provided above is true and accurate to the best
+                    of my knowledge.
+                </p>
+            </section>
+
+        </div>
+    </div>
+</body>
+</html>

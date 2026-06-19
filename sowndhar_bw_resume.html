@@ -1,0 +1,323 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sowndhar D - Resume</title>
+    <style>
+        @page { size: A4; margin: 0; }
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        body {
+            font-family: Arial, Helvetica, sans-serif;
+            background: #ccc;
+            display: flex;
+            justify-content: center;
+        }
+
+        .resume {
+            width: 210mm;
+            height: 297mm;
+            display: grid;
+            grid-template-columns: 170px 1fr;
+            background: white;
+            overflow: hidden;
+            box-shadow: 0 0 15px rgba(0,0,0,0.3);
+        }
+
+        /* ── LEFT SIDEBAR ── */
+        .sidebar {
+            background: #e8a9ad;
+            padding: 22px 14px;
+        }
+
+        .sidebar .s-name {
+            font-size: 17px;
+            font-weight: 900;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            color: #1a1a1a;
+            margin-bottom: 3px;
+        }
+
+        .sidebar .s-title {
+            font-size: 8.5px;
+            text-transform: uppercase;
+            color: #3a3a3a;
+            font-weight: 600;
+            line-height: 1.4;
+            margin-bottom: 16px;
+        }
+
+        .s-section { margin-bottom: 14px; }
+
+        .s-section h3 {
+            font-size: 9.5px;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.8px;
+            color: #1a1a1a;
+            margin-bottom: 7px;
+        }
+
+        .c-item { margin-bottom: 6px; }
+
+        .c-item .lbl {
+            font-size: 9px;
+            font-weight: 700;
+            color: #1a1a1a;
+        }
+
+        .c-item .val {
+            font-size: 9px;
+            color: #2d2d2d;
+            line-height: 1.4;
+            word-break: break-all;
+        }
+
+        .sk {
+            font-size: 9.5px;
+            color: #2d2d2d;
+            margin-bottom: 4px;
+            padding-left: 10px;
+            position: relative;
+            line-height: 1.4;
+        }
+        .sk:before { content: "•"; position: absolute; left: 0; color: #1a1a1a; font-weight: bold; }
+
+        .p-item { margin-bottom: 5px; }
+        .p-item .lbl { font-size: 9px; font-weight: 700; color: #1a1a1a; }
+        .p-item .val { font-size: 9px; color: #2d2d2d; }
+
+        /* ── RIGHT MAIN CONTENT ── */
+        .main { padding: 22px 26px; background: white; }
+
+        .m-header {
+            margin-bottom: 12px;
+            padding-bottom: 7px;
+            border-bottom: 2.5px solid #e8a9ad;
+        }
+
+        .m-header .m-name {
+            font-size: 22px;
+            font-weight: 900;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+            color: #1a1a1a;
+            margin-bottom: 3px;
+        }
+
+        .m-header .m-title {
+            font-size: 9.5px;
+            text-transform: uppercase;
+            color: #c07080;
+            font-weight: 700;
+            letter-spacing: 0.5px;
+        }
+
+        .section { margin-bottom: 10px; }
+
+        .section h2 {
+            font-size: 10.5px;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.8px;
+            color: #1a1a1a;
+            margin-bottom: 6px;
+            padding-bottom: 3px;
+            border-bottom: 1px solid #ddd;
+        }
+
+        .about-text {
+            font-size: 8.8px;
+            color: #444;
+            line-height: 1.6;
+            font-style: italic;
+            text-align: justify;
+        }
+
+        /* Education */
+        .edu-entry { margin-bottom: 6px; }
+
+        .edu-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: baseline;
+        }
+
+        .edu-degree { font-size: 9.5px; font-weight: 700; color: #1a1a1a; }
+        .edu-year { font-size: 8.5px; color: #666; white-space: nowrap; }
+        .edu-school { font-size: 9px; color: #c07080; font-weight: 600; }
+        .edu-detail { font-size: 8.5px; color: #666; }
+
+        /* Projects */
+        .proj-entry { margin-bottom: 6px; }
+        .proj-title { font-size: 9.5px; font-weight: 700; color: #1a1a1a; }
+        .proj-tech { font-size: 8.5px; color: #c07080; font-weight: 600; margin-bottom: 2px; }
+        .proj-desc { font-size: 8.5px; color: #444; line-height: 1.5; text-align: justify; }
+
+        /* Certifications */
+        .cert-list { list-style: none; padding: 0; }
+        .cert-list li {
+            font-size: 8.8px;
+            color: #444;
+            padding-left: 12px;
+            position: relative;
+            margin-bottom: 3px;
+            line-height: 1.4;
+        }
+        .cert-list li:before { content: "•"; position: absolute; left: 0; }
+
+        /* Declaration */
+        .decl-text { font-size: 8.8px; color: #444; font-style: italic; }
+
+        @media print {
+            body { background: white; }
+            .resume { box-shadow: none; width: 100%; height: 100%; }
+        }
+    </style>
+</head>
+<body>
+<div class="resume">
+
+    <!-- LEFT SIDEBAR -->
+    <div class="sidebar">
+        <div class="s-name">SOWNDHAR.D</div>
+        <div class="s-title">BE - COMPUTER SCIENCE &amp;<br>ENGINEERING</div>
+
+        <div class="s-section">
+            <h3>Contact</h3>
+            <div class="c-item">
+                <div class="lbl">Email</div>
+                <div class="val">sowndhardeventhiren@gmail.com</div>
+            </div>
+            <div class="c-item">
+                <div class="lbl">Phone</div>
+                <div class="val">+91 9344536941</div>
+            </div>
+            <div class="c-item">
+                <div class="lbl">Address</div>
+                <div class="val">Vizhupeunthurai, Cuddalore(Dt),<br>Simudram(Tk) - 608702</div>
+            </div>
+            <div class="c-item">
+                <div class="lbl">LinkedIn</div>
+                <div class="val">linkedin.com/in/sowndhar-deventhiren-2bbbb4375</div>
+            </div>
+            <div class="c-item">
+                <div class="lbl">GitHub</div>
+                <div class="val">github.com/sweetysowndhar</div>
+            </div>
+        </div>
+
+        <div class="s-section">
+            <h3>Technical Skills</h3>
+            <div class="sk">HTML</div>
+            <div class="sk">CSS</div>
+            <div class="sk">JavaScript</div>
+            <div class="sk">Python</div>
+            <div class="sk">Machine Learning</div>
+            <div class="sk">Data Analytics</div>
+            <div class="sk">OpenCV</div>
+            <div class="sk">Git and GitHub</div>
+        </div>
+
+        <div class="s-section">
+            <h3>Professional Skills</h3>
+            <div class="sk">Communication</div>
+            <div class="sk">Time Management</div>
+            <div class="sk">Problem Solving</div>
+            <div class="sk">Leadership</div>
+            <div class="sk">Adaptability</div>
+        </div>
+
+        <div class="s-section">
+            <h3>Personal Details</h3>
+            <div class="p-item">
+                <div class="lbl">Nationality</div>
+                <div class="val">Indian</div>
+            </div>
+            <div class="p-item">
+                <div class="lbl">Languages</div>
+                <div class="val">Tamil + English</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- RIGHT MAIN CONTENT -->
+    <div class="main">
+        <div class="m-header">
+            <div class="m-name">SOWNDHAR.D</div>
+            <div class="m-title">BE - COMPUTER SCIENCE AND ENGINEERING</div>
+        </div>
+
+        <div class="section">
+            <h2>About Me</h2>
+            <p class="about-text">I am highly enthusiastic and results-driven professional with strong leadership. I possess exceptional time management skills that allow me to effectively prioritize and execute complex projects, consistently meeting deadlines. A genuine work enthusiasm drives my commitment to organizational goals, and I am a quick and adaptable learner, capable of rapidly mastering new technologies and processes to contribute immediate value to the team.</p>
+        </div>
+
+        <div class="section">
+            <h2>Education</h2>
+            <div class="edu-entry">
+                <div class="edu-header">
+                    <div class="edu-degree">Bachelor's Degree — BE CSE</div>
+                    <div class="edu-year">2022 – 2026</div>
+                </div>
+                <div class="edu-school">JKK Munirajah College of Technology, Erode</div>
+                <div class="edu-detail">CGPA — 7.56</div>
+            </div>
+            <div class="edu-entry">
+                <div class="edu-header">
+                    <div class="edu-degree">State Board — 12th</div>
+                    <div class="edu-year">2020 – 2022</div>
+                </div>
+                <div class="edu-school">Chandra Higher Secondary School, Sethiyathope</div>
+                <div class="edu-detail">Percentage — 61%</div>
+            </div>
+            <div class="edu-entry">
+                <div class="edu-header">
+                    <div class="edu-degree">State Board — SSLC</div>
+                    <div class="edu-year">2019 – 2020</div>
+                </div>
+                <div class="edu-school">Chandra Higher Secondary School, Sethiyathope</div>
+                <div class="edu-detail">Percentage — 60.6%</div>
+            </div>
+        </div>
+
+        <div class="section">
+            <h2>Projects</h2>
+            <div class="proj-entry">
+                <div class="proj-title">1. Share Market Prediction App</div>
+                <div class="proj-tech">Python, Machine Learning, HTML, CSS, JavaScript</div>
+                <div class="proj-desc">An AI-powered share market prediction application using machine learning algorithms to analyze historical stock data and predict future price trends. Implemented data visualization dashboards for real-time market insights. <strong>Developed stock prediction model with 78% accuracy.</strong></div>
+            </div>
+            <div class="proj-entry">
+                <div class="proj-title">2. Real-Time Glare Remover</div>
+                <div class="proj-tech">Python, OpenCV</div>
+                <div class="proj-desc">Developed a real-time system to detect and reduce glare in CCTV camera footage using Python and OpenCV, improving image clarity for surveillance applications. <strong>Reduced glare by 40% using OpenCV techniques.</strong></div>
+            </div>
+            <div class="proj-entry">
+                <div class="proj-title">3. E-Commerce Website</div>
+                <div class="proj-tech">HTML, CSS, JavaScript</div>
+                <div class="proj-desc">Built a fully functional e-commerce website with product listings, shopping cart, and responsive design using front-end web technologies.</div>
+            </div>
+        </div>
+
+        <div class="section">
+            <h2>Certifications</h2>
+            <ul class="cert-list">
+                <li>Skill Intern Certificate for Web Developer</li>
+                <li>Internship on 15 days for Web Development Certificate</li>
+                <li>Attended a 2-day Workshop on Data Analytics</li>
+                <li>Python Basic Internship for 7 days</li>
+            </ul>
+        </div>
+
+        <div class="section">
+            <h2>Declaration</h2>
+            <p class="decl-text">I hereby declare that the information provided above is true and accurate to the best of my knowledge.</p>
+        </div>
+    </div>
+
+</div>
+</body>
+</html>

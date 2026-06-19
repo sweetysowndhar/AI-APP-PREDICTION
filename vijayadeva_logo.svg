@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="200" height="200" viewBox="0 0 200 200">
+  <defs>
+    <style>
+      .mar { fill: #5A0B00; }
+      .gold { fill: #D4AF37; }
+      .white { fill: #ffffff; }
+    </style>
+  </defs>
+  <rect width="200" height="200" rx="12" ry="12" fill="#FBF8F2" />
+  <g transform="translate(100,70)">
+    <circle r="44" class="mar" />
+    <g transform="translate(-8,-6)" fill="#fff">
+      <path d="M2 0 C2 -6 8 -6 8 0 C8 6 2 6 2 0 Z" transform="scale(1.6) translate(6,2)" />
+      <rect x="12" y="-8" width="4" height="20" rx="2" transform="rotate(-18 14 4)" />
+    </g>
+  </g>
+  <text x="100" y="150" font-family="'Noto Sans Tamil', Arial" font-size="18" text-anchor="middle" class="mar">விஜயதேவா</text>
+</svg>

@@ -1,0 +1,52 @@
+<svg width="350" height="200" viewBox="0 0 350 200" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <style>
+      .bg { fill: #FBF8F2; }
+      .maroon { fill: #5A0B00; }
+      .gold { fill: #D4AF37; }
+      .text-dark { fill: #2C2C2C; font-family: 'Noto Sans Tamil', Arial, Helvetica, sans-serif; }
+      .company-tamil { font-size: 22px; font-weight: 800; font-family: 'Noto Sans Tamil', Arial, Helvetica, sans-serif; }
+      .company-eng { font-size: 12px; font-style: italic; }
+      .name { font-size: 16px; font-weight: 700; }
+      .small { font-size: 12px; }
+    </style>
+  </defs>
+
+  <rect class="bg" x="0" y="0" width="350" height="200" rx="6" ry="6" />
+
+  <!-- Gold top band with Tamil blessing -->
+  <rect x="0" y="0" width="350" height="36" class="gold" rx="6" ry="6" />
+  <text x="175" y="24" text-anchor="middle" font-family="'Noto Sans Tamil', Arial" font-size="12" fill="#5A0B00">ஸ்ரீ செஞ்சி ஆண்டவர் துணை</text>
+
+  <!-- Embedded logo: spoon+fork with maroon circle and gold ribbon -->
+  <g transform="translate(26,68)">
+    <circle cx="0" cy="0" r="34" fill="#5A0B00" />
+    <g transform="translate(-5,-6)" fill="#fff">
+      <path d="M2 0 C2 -6 8 -6 8 0 C8 6 2 6 2 0 Z" transform="scale(1.5) translate(6,2)" />
+      <rect x="12" y="-8" width="4" height="22" rx="2" transform="rotate(-18 14 4)" />
+    </g>
+    <rect x="-36" y="30" width="72" height="14" rx="6" fill="#D4AF37" />
+    <text x="0" y="41" text-anchor="middle" font-family="'Noto Sans Tamil', Arial" font-size="10" fill="#5A0B00">விஜயதேவா</text>
+  </g>
+
+  <!-- Company name (Tamil) -->
+  <text x="92" y="72" class="company-tamil maroon">விஜயதேவா கேட்டரிங்</text>
+  <text x="92" y="92" class="company-eng text-dark">Vijayadeva Catering</text>
+  <text x="92" y="110" class="small text-dark">ஒவ்வொரு நிகழ்ச்சிக்குமான சுவையான உணவு</text>
+
+  <!-- Contact block (Tamil labels) -->
+  <g transform="translate(18,126)" class="text-dark">
+    <text x="0" y="0" class="name">ஸ்வ. சௌந்தர் தேவேந்திரன்</text>
+    <text x="0" y="18" class="small">உரிமையாளர்</text>
+
+    <text x="170" y="0" class="small">தொலைபேசி: 9003952911, 759869597</text>
+    <text x="170" y="16" class="small">மின்னஞ்சல்: sowndhardevendhiren@gmail.com</text>
+    <text x="170" y="32" class="small">இணையத்தளம்: sweetysowndhar.github.io/vijayadeva-catering/</text>
+  </g>
+
+  <!-- Divider line -->
+  <line x1="16" y1="164" x2="334" y2="164" stroke="#EDE0C8" stroke-width="2" />
+
+  <!-- Address / location in Tamil -->
+  <text x="20" y="186" class="small text-dark">விழுப்பேருந்துறை</text>
+</svg>

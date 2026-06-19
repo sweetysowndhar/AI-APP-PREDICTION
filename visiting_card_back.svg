@@ -1,0 +1,22 @@
+<svg width="350" height="200" viewBox="0 0 350 200" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <style>
+      .bg { fill: #5A0B00; }
+      .gold { fill: #D4AF37; }
+      .title { font-family: 'Noto Sans Tamil', Arial, Helvetica, sans-serif; font-size: 20px; font-weight: 800; }
+      .list { font-family: 'Noto Sans Tamil', Arial, Helvetica, sans-serif; font-size: 12px; }
+    </style>
+  </defs>
+  <rect class="bg" x="0" y="0" width="350" height="200" rx="6" ry="6" />
+
+  <text x="175" y="56" class="title gold" text-anchor="middle">விஜயதேவா கேட்டரிங்</text>
+  <text x="175" y="78" class="list gold" text-anchor="middle">மணவிழாக்கள் · நிறுவன நிகழ்ச்சிகள் · தனி பார்ட்டிகள்</text>
+
+  <g transform="translate(40,104)">
+    <text class="list gold" x="0" y="0">• தனிப்பயன் மெனுக்கள்</text>
+    <text class="list gold" x="0" y="22">• இடத்தில் மற்றும் டிராப்-ஆஃப் கேட்டெரிங்</text>
+    <text class="list gold" x="0" y="44">• சுவையிடல் மற்றும் ஆலோசனை</text>
+  </g>
+
+  <text x="175" y="170" class="list gold" text-anchor="middle">தொலைபேசி: 9003952911, 759869597 · sowndhardevendhiren@gmail.com</text>
+</svg>

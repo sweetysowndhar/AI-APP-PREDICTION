@@ -2202,18 +2202,18 @@ class AIEngine:
                     'ob_score': round(ob_score, 4),
                     'fib_score': round(fib_score, 4),
                     'fvg_score': round(fvg_score, 4),
-                    'news_score': round(news_score, 4),
-                    'sec_score': round(sec_score, 4),
-                    'evt_score': round(evt_score, 4)
+                    'news_score': round(news_val, 4),
+                    'sec_score': round(sec_val, 4),
+                    'evt_score': round(evt_val, 4)
                 },
                 'breakdown': {
                     'Trend Alignment': "PASS ✅" if not is_conflict else "FAIL ❌",
                     'Volume Confirm': "PASS ✅" if is_vol_strong else "FAIL ❌",
                     'MTF Sync': "PASS ✅" if is_mtf_sync else "FAIL ❌",
                     'Volatility OK': "PASS ✅" if vol_mult > 0 else "FAIL ❌",
-                    'News Sentiment': "PASS ✅" if news_score >= 0.5 else "FAIL ❌",
-                    'Sector Trend': "PASS ✅" if sec_score >= 0.5 else "FAIL ❌",
-                    'Event Impact': "PASS ✅" if evt_score >= 0.5 else "FAIL ❌",
+                    'News Sentiment': "PASS ✅" if news_val >= 0.5 else "FAIL ❌",
+                    'Sector Trend': "PASS ✅" if sec_val >= 0.5 else "FAIL ❌",
+                    'Event Impact': "PASS ✅" if evt_val >= 0.5 else "FAIL ❌",
                     'Liquidity Sweep': "PASS 💧" if (ml_side == 1 and liquidity_sweep['bullish']) or (ml_side == -1 and liquidity_sweep['bearish']) else "FAIL ❌"
                 },
                 'smc': {

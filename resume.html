@@ -1,0 +1,472 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Ramkumar - Demi Chef De Partie Resume</title>
+    <style>
+        @page {
+            size: A4;
+            margin: 0;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: #f5f5f5;
+            line-height: 1.4;
+            color: #333;
+        }
+
+        .resume-container {
+            width: 210mm;
+            height: 297mm;
+            margin: 0 auto;
+            background: white;
+            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.1);
+            display: grid;
+            grid-template-columns: 230px 1fr;
+            overflow: hidden;
+        }
+
+        .sidebar {
+            background: linear-gradient(135deg, #d4a5a0 0%, #c99a95 100%);
+            padding: 22px 18px;
+            color: white;
+        }
+
+        .sidebar h1 {
+            font-size: 24px;
+            font-weight: 700;
+            letter-spacing: 2px;
+            margin-bottom: 2px;
+        }
+
+        .sidebar .initial {
+            font-size: 20px;
+            font-weight: 300;
+            margin-bottom: 14px;
+            letter-spacing: 2px;
+        }
+
+        .sidebar-section {
+            margin-bottom: 16px;
+        }
+
+        .sidebar-section h3 {
+            font-size: 10px;
+            font-weight: 600;
+            letter-spacing: 1.5px;
+            text-transform: uppercase;
+            margin-bottom: 8px;
+            border-bottom: 1.5px solid rgba(255, 255, 255, 0.3);
+            padding-bottom: 5px;
+        }
+
+        .sidebar-item {
+            margin-bottom: 7px;
+            font-size: 10px;
+            line-height: 1.35;
+        }
+
+        .sidebar-item strong {
+            display: block;
+            font-weight: 600;
+            margin-bottom: 1px;
+        }
+
+        .main-content {
+            padding: 22px 28px;
+            background: #f9f9f9;
+        }
+
+        .name-title {
+            margin-bottom: 14px;
+            border-bottom: 2.5px solid #d4a5a0;
+            padding-bottom: 8px;
+        }
+
+        .name-title h2 {
+            font-size: 22px;
+            font-weight: 700;
+            color: #1a1a1a;
+            margin-bottom: 2px;
+        }
+
+        .job-title {
+            font-size: 11px;
+            font-weight: 500;
+            color: #d4a5a0;
+            letter-spacing: 1px;
+            text-transform: uppercase;
+        }
+
+        section {
+            margin-bottom: 12px;
+        }
+
+        section h2 {
+            font-size: 12px;
+            font-weight: 700;
+            color: #1a1a1a;
+            margin-bottom: 8px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            border-bottom: 1.5px solid #e0e0e0;
+            padding-bottom: 4px;
+        }
+
+        .summary-text {
+            font-size: 10px;
+            line-height: 1.5;
+            color: #444;
+            font-style: italic;
+        }
+
+        .job-entry {
+            margin-bottom: 10px;
+            padding-bottom: 8px;
+            border-bottom: 1px solid #eee;
+        }
+
+        .job-entry:last-child {
+            border-bottom: none;
+            margin-bottom: 0;
+            padding-bottom: 0;
+        }
+
+        .job-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: baseline;
+            margin-bottom: 2px;
+        }
+
+        .job-title-main {
+            font-size: 11px;
+            font-weight: 600;
+            color: #1a1a1a;
+        }
+
+        .job-date {
+            font-size: 9.5px;
+            color: #666;
+            font-weight: 500;
+        }
+
+        .job-company {
+            font-size: 10px;
+            color: #d4a5a0;
+            font-weight: 500;
+            margin-bottom: 4px;
+        }
+
+        .job-description {
+            font-size: 9.5px;
+            color: #555;
+            line-height: 1.45;
+        }
+
+        .job-description ul {
+            list-style: none;
+            margin-top: 3px;
+            padding-left: 0;
+        }
+
+        .job-description li {
+            margin-bottom: 2px;
+            padding-left: 12px;
+            position: relative;
+        }
+
+        .job-description li:before {
+            content: "•";
+            position: absolute;
+            left: 0;
+            color: #d4a5a0;
+            font-weight: bold;
+        }
+
+        .education-item {
+            margin-bottom: 0;
+        }
+
+        .education-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: baseline;
+            margin-bottom: 2px;
+        }
+
+        .education-degree {
+            font-size: 10.5px;
+            font-weight: 600;
+            color: #1a1a1a;
+        }
+
+        .education-year {
+            font-size: 9.5px;
+            color: #666;
+            font-weight: 500;
+        }
+
+        .education-school {
+            font-size: 10px;
+            color: #d4a5a0;
+            font-weight: 500;
+        }
+
+        .skills-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 5px;
+        }
+
+        .skill-item {
+            font-size: 9.5px;
+            color: #555;
+            padding: 4px 7px;
+            background: white;
+            border-left: 2.5px solid #d4a5a0;
+            line-height: 1.3;
+        }
+
+        .languages-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr 1fr 1fr;
+            gap: 10px;
+        }
+
+        .language-item {
+            font-size: 10px;
+            color: #555;
+        }
+
+        .language-item strong {
+            color: #1a1a1a;
+            display: block;
+            margin-bottom: 1px;
+        }
+
+        @media print {
+            body { padding: 0; background: white; }
+            .resume-container { box-shadow: none; width: 100%; height: 100%; }
+        }
+    </style>
+</head>
+<body>
+    <div class="resume-container">
+
+        <!-- SIDEBAR -->
+        <div class="sidebar">
+            <h1>RAMKUMAR</h1>
+            <div class="initial">R</div>
+
+            <div class="sidebar-section">
+                <h3>Contact</h3>
+                <div class="sidebar-item">
+                    <strong>Email</strong>
+                    rajram111102@gmail.com
+                </div>
+                <div class="sidebar-item">
+                    <strong>Phone</strong>
+                    +91 9345261529
+                </div>
+                <div class="sidebar-item">
+                    <strong>Address</strong>
+                    455, Vizhuperunthurai, Nangudi,<br>
+                    Cuddalore, Tamilnadu 608702
+                </div>
+            </div>
+
+            <div class="sidebar-section">
+                <h3>Personal Details</h3>
+                <div class="sidebar-item">
+                    <strong>Date of Birth</strong>
+                    11/11/2002
+                </div>
+                <div class="sidebar-item">
+                    <strong>Nationality</strong>
+                    Indian
+                </div>
+                <div class="sidebar-item">
+                    <strong>Marital Status</strong>
+                    Single
+                </div>
+                <div class="sidebar-item">
+                    <strong>Gender</strong>
+                    Male
+                </div>
+                <div class="sidebar-item">
+                    <strong>Visa Status</strong>
+                    Full Working Capabilities
+                </div>
+                <div class="sidebar-item">
+                    <strong>Passport</strong>
+                    V8524841
+                </div>
+                <div class="sidebar-item">
+                    <strong>CDC Number</strong>
+                    NUM604122<br>
+                    Expiry: 10/06/2025 - 19/06/2035
+                </div>
+            </div>
+
+            <div class="sidebar-section">
+                <h3>Languages</h3>
+                <div class="sidebar-item">English • Tamil • Hindi • Malayalam</div>
+            </div>
+        </div>
+
+        <!-- MAIN CONTENT -->
+        <div class="main-content">
+
+            <div class="name-title">
+                <h2>RAMKUMAR</h2>
+                <div class="job-title">Demi Chef De Partie</div>
+            </div>
+
+            <!-- Professional Summary -->
+            <section>
+                <h2>Professional Summary</h2>
+                <p class="summary-text">
+                    Dedicated culinary professional with a BSC in Catering and Hotel Administration
+                    and progressive experience across luxury resorts and international hotels in India,
+                    Qatar, and the Maldives. Skilled in food preparation, butchery, inventory management,
+                    and maintaining strict food safety standards.
+                </p>
+            </section>
+
+            <!-- Work History -->
+            <section>
+                <h2>Work History</h2>
+
+                <div class="job-entry">
+                    <div class="job-header">
+                        <div class="job-title-main">Demi Chef De Partie</div>
+                        <div class="job-date">Nov 2024 - Present</div>
+                    </div>
+                    <div class="job-company">Kuredhivaru Resort, Maldives</div>
+                    <div class="job-description">
+                        <ul>
+                            <li>Manage and maintain the butchery section, ensuring proper handling and storage of meats</li>
+                            <li>Monitor food stock levels, placing orders and receiving deliveries to ensure freshness</li>
+                            <li>Train and supervise junior kitchen staff on butchery techniques</li>
+                        </ul>
+                    </div>
+                </div>
+
+                <div class="job-entry">
+                    <div class="job-header">
+                        <div class="job-title-main">Commis 1</div>
+                        <div class="job-date">Mar 2024 - Nov 2024</div>
+                    </div>
+                    <div class="job-company">Movenpick Resort, Maldives</div>
+                    <div class="job-description">
+                        <ul>
+                            <li>Assisted senior chefs in daily kitchen operations at a 5-star international resort</li>
+                            <li>Maintained high standards of food preparation, presentation, and hygiene</li>
+                            <li>Participated in menu development and special event preparations</li>
+                        </ul>
+                    </div>
+                </div>
+
+                <div class="job-entry">
+                    <div class="job-header">
+                        <div class="job-title-main">Commis 2</div>
+                        <div class="job-date">Feb 2023 - Mar 2024</div>
+                    </div>
+                    <div class="job-company">Indian Rixos Gulf Hotel, Doha</div>
+                    <div class="job-description">
+                        <ul>
+                            <li>Worked in multicuisine breakfast buffet operations with food safety compliance</li>
+                            <li>Assisted in inventory management; specialized in pastry cream, sauce, and sponge production</li>
+                        </ul>
+                    </div>
+                </div>
+
+                <div class="job-entry">
+                    <div class="job-header">
+                        <div class="job-title-main">Commis 3</div>
+                        <div class="job-date">Oct 2022 - Feb 2023</div>
+                    </div>
+                    <div class="job-company">Darza Resort, Coimbatore, India</div>
+                    <div class="job-description">
+                        <ul>
+                            <li>Continental department — sauce, grill food, roast food, and pantry preparation</li>
+                        </ul>
+                    </div>
+                </div>
+
+                <div class="job-entry">
+                    <div class="job-header">
+                        <div class="job-title-main">On-Job Training</div>
+                        <div class="job-date">May 2022 - Sep 2022</div>
+                    </div>
+                    <div class="job-company">Radisson Blu, Chennai, India</div>
+                    <div class="job-description">
+                        <ul>
+                            <li>Trained in continental and pantry departments; learned professional kitchen protocols</li>
+                        </ul>
+                    </div>
+                </div>
+
+            </section>
+
+            <!-- Core Competencies -->
+            <section>
+                <h2>Core Competencies</h2>
+                <div class="skills-grid">
+                    <div class="skill-item">HACCP & Food Safety Compliance</div>
+                    <div class="skill-item">Food Stock & Inventory Management</div>
+                    <div class="skill-item">Supply Ordering & Delivery Receiving</div>
+                    <div class="skill-item">Menu Development & Innovation</div>
+                    <div class="skill-item">Butchery & Meat Handling</div>
+                    <div class="skill-item">Continental Cuisine</div>
+                    <div class="skill-item">Pastry & Sponge Production</div>
+                    <div class="skill-item">Sauce & Grill Preparation</div>
+                    <div class="skill-item">Kitchen Cleanliness & Sanitation</div>
+                    <div class="skill-item">Staff Training & Leadership</div>
+                </div>
+            </section>
+
+            <!-- Education -->
+            <section>
+                <h2>Education</h2>
+                <div class="education-item">
+                    <div class="education-header">
+                        <div class="education-degree">BSC Catering and Hotel Administration</div>
+                        <div class="education-year">2019 - 2022</div>
+                    </div>
+                    <div class="education-school">Alagappa University, Tamil Nadu</div>
+                </div>
+            </section>
+
+            <!-- Languages -->
+            <section>
+                <h2>Languages</h2>
+                <div class="languages-grid">
+                    <div class="language-item">
+                        <strong>English</strong>Fluent
+                    </div>
+                    <div class="language-item">
+                        <strong>Tamil</strong>Native
+                    </div>
+                    <div class="language-item">
+                        <strong>Hindi</strong>Fluent
+                    </div>
+                    <div class="language-item">
+                        <strong>Malayalam</strong>Conversational
+                    </div>
+                </div>
+            </section>
+
+        </div>
+    </div>
+</body>
+</html>

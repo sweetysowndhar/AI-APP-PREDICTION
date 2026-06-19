@@ -2148,9 +2148,9 @@ class AIEngine:
                 (ob_score * 0.08) +          # Order Block
                 (fib_score * 0.04) +         # Fibonacci
                 (fvg_score * 0.03) +         # FVG
-                (news_score * 0.07) +        # NEW: News Sentiment
-                (sec_score * 0.04) +         # NEW: Sector Sentiment
-                (evt_score * 0.04)           # NEW: Event Impact
+                (news_val * 0.07) +          # NEW: News Sentiment
+                (sec_val * 0.04) +           # NEW: Sector Sentiment
+                (evt_val * 0.04)             # NEW: Event Impact
             )
             
             # Baseline conviction score (excluding SMC optional components OB, FVG, Fib)
@@ -2160,9 +2160,9 @@ class AIEngine:
                 (tech_score * 0.18) +
                 (volume_score * 0.12) +
                 (structure_score * 0.10) +
-                (news_score * 0.07) +
-                (sec_score * 0.04) +
-                (evt_score * 0.04)
+                (news_val * 0.07) +
+                (sec_val * 0.04) +
+                (evt_val * 0.04)
             ) / 0.85
             
             # Apply Multipliers to both scores

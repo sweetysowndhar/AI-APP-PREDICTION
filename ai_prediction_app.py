@@ -3460,8 +3460,8 @@ def main():
                 f'<span style="background:{status_color}; color:white; padding:2px 8px; border-radius:12px; font-size:0.75rem; font-weight:700;">{status_text}</span></div>', unsafe_allow_html=True)
 
     # Self-healing engine initialization: Re-instantiate if stale or missing methods
-    if 'engine' not in st.session_state or not hasattr(st.session_state.engine, 'predict'):
-        st.session_state.engine = AIEngine()
+    if 'engine_v2' not in st.session_state or not hasattr(st.session_state.engine_v2, 'predict'):
+        st.session_state.engine_v2 = AIEngine()
 
     # ── Ticker Bar & Live Refresh ─────────────────────────────────────
     ticker_syms = ['^NSEI', '^BSESN', '^NSEBANK', '^GSPC', '^IXIC']
@@ -4108,7 +4108,7 @@ def page_backtester():
                 prices = df['Close'].dropna().astype(float).tolist()
                 volumes = df['Volume'].dropna().astype(float).tolist()
                 # Train/Load model
-                metrics = st.session_state.engine.train(symbol, prices, volumes)
+                metrics = st.session_state.engine_v2.train(symbol, prices, volumes)
                 if not metrics:
                     st.error("AI Training failed. Not enough historical patterns found for this stock. Try a more volatile symbol.")
                     return
@@ -4127,7 +4127,7 @@ def page_backtester():
                     sub_volumes = sub_df['Volume'].tolist()
                     
                     # Predict for T+3
-                    pred = st.session_state.engine.predict(symbol, sub_prices, sub_volumes, df=sub_df)
+                    pred = st.session_state.engine_v2.predict(symbol, sub_prices, sub_volumes, df=sub_df)
                     if pred:
                         sig = pred['today']['signal']
                         if "BUY" in sig or "SELL" in sig:
@@ -4263,21 +4263,21 @@ def page_prediction():
                     sent = news_score
 
                 with st.spinner("🧠 Training Engine..."):
-                    metrics = st.session_state.engine.train(symbol, prices, volumes, sent)
+                    metrics = st.session_state.engine_v2.train(symbol, prices, volumes, sent)
                     st.session_state.pred_metrics = metrics
                 
                 with st.spinner("📡 TradingView Bias..."):
                     tv_sentiment = fetch_tv_sentiment(symbol, mapped)
                 
                 if metrics:
-                    res = st.session_state.engine.predict(symbol, prices, volumes, news_sent=news_score, tv_sent=tv_sentiment, sector_score=sector_score, event_score=event_score, intraday=is_intra, df=df_run, df_1h=df_1h, df_1d=df_1d, df_15m=df_15m)
+                    res = st.session_state.engine_v2.predict(symbol, prices, volumes, news_sent=news_score, tv_sent=tv_sentiment, sector_score=sector_score, event_score=event_score, intraday=is_intra, df=df_run, df_1h=df_1h, df_1d=df_1d, df_15m=df_15m)
                     st.session_state.pred_results = res
                     
                     # NEW: Step 1, 3 & 5 Integration
                     entry_price = live_price if live_price else float(df_run.iloc[-1]['Close'])
-                    timing = st.session_state.engine.detect_entry_timing(df_run)
-                    liquidity = st.session_state.engine.detect_liquidity(df_run)
-                    risk_params = st.session_state.engine.calculate_risk_parameters(
+                    timing = st.session_state.engine_v2.detect_entry_timing(df_run)
+                    liquidity = st.session_state.engine_v2.detect_liquidity(df_run)
+                    risk_params = st.session_state.engine_v2.calculate_risk_parameters(
                         symbol, entry_price, res['today']['signal'], 
                         st.session_state.get('risk_cap', 100000), 
                         st.session_state.get('risk_pct', 1.0),
@@ -4861,7 +4861,7 @@ def page_prediction():
         st.markdown('<br><hr><br>', unsafe_allow_html=True)
         
         # Step 4 (v3): Market Session Awareness
-        session_phase = st.session_state.engine.get_market_session()
+        session_phase = st.session_state.engine_v2.get_market_session()
         
         # Badge Styling (Step 7)
         badge_html = ""

@@ -2100,7 +2100,6 @@ class AIEngine:
                 
             # Fibonacci Confluence
             fib_score = 0.0
-            fib_levels = self.calculate_fibonacci(df)
             if fib_levels:
                 for lvl in fib_levels.values():
                     dist = abs(current_price - lvl) / current_price

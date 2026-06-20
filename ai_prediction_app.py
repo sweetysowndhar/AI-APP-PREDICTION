@@ -1453,63 +1453,65 @@ def generate_gemini_intelligence(symbol, domestic_news, global_news, api_key):
     <Interplay content>
     """
     
-    try:
-        import requests
-        import json
-        url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={api_key}"
-        headers = {
-            "Content-Type": "application/json"
-        }
-        payload = {
-            "contents": [{
-                "parts": [{
-                    "text": prompt
-                }]
+    import requests
+    import json
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={api_key}"
+    headers = {
+        "Content-Type": "application/json"
+    }
+    payload = {
+        "contents": [{
+            "parts": [{
+                "text": prompt
             }]
-        }
-        r = requests.post(url, headers=headers, json=payload, timeout=12)
-        if r.status_code == 200:
-            data = r.json()
-            text = data['candidates'][0]['content']['parts'][0]['text']
+        }]
+    }
+    r = requests.post(url, headers=headers, json=payload, timeout=12)
+    if r.status_code != 200:
+        raise Exception(f"Gemini API returned status code {r.status_code}: {r.text}")
+    
+    data = r.json()
+    if 'candidates' not in data or not data['candidates']:
+        raise Exception(f"Gemini API returned no candidates. Response body: {json.dumps(data)}")
+        
+    text = data['candidates'][0]['content']['parts'][0]['text']
+    
+    # Parse the response
+    dom_part, glob_part, interplay_part = "", "", ""
+    if '[DOMESTIC]' in text and '[GLOBAL]' in text and '[INTERPLAY]' in text:
+        parts = text.split('[GLOBAL]')
+        dom_part = parts[0].replace('[DOMESTIC]', '').strip()
+        parts_2 = parts[1].split('[INTERPLAY]')
+        glob_part = parts_2[0].strip()
+        interplay_part = parts_2[1].strip()
+    else:
+        lines = text.split('\n')
+        current_section = None
+        dom_lines, glob_lines, interplay_lines = [], [], []
+        for line in lines:
+            if 'DOMESTIC' in line.upper():
+                current_section = 'dom'
+                continue
+            elif 'GLOBAL' in line.upper():
+                current_section = 'glob'
+                continue
+            elif 'INTERPLAY' in line.upper():
+                current_section = 'interplay'
+                continue
             
-            # Parse the response
-            dom_part, glob_part, interplay_part = "", "", ""
-            if '[DOMESTIC]' in text and '[GLOBAL]' in text and '[INTERPLAY]' in text:
-                parts = text.split('[GLOBAL]')
-                dom_part = parts[0].replace('[DOMESTIC]', '').strip()
-                parts_2 = parts[1].split('[INTERPLAY]')
-                glob_part = parts_2[0].strip()
-                interplay_part = parts_2[1].strip()
-            else:
-                lines = text.split('\n')
-                current_section = None
-                dom_lines, glob_lines, interplay_lines = [], [], []
-                for line in lines:
-                    if 'DOMESTIC' in line.upper():
-                        current_section = 'dom'
-                        continue
-                    elif 'GLOBAL' in line.upper():
-                        current_section = 'glob'
-                        continue
-                    elif 'INTERPLAY' in line.upper():
-                        current_section = 'interplay'
-                        continue
-                    
-                    if current_section == 'dom':
-                        dom_lines.append(line)
-                    elif current_section == 'glob':
-                        glob_lines.append(line)
-                    elif current_section == 'interplay':
-                        interplay_lines.append(line)
-                dom_part = "\n".join(dom_lines).strip()
-                glob_part = "\n".join(glob_lines).strip()
-                interplay_part = "\n".join(interplay_lines).strip()
-                
-            if dom_part and glob_part and interplay_part:
-                return dom_part, glob_part, interplay_part
-        return None
-    except Exception:
-        return None
+            if current_section == 'dom':
+                dom_lines.append(line)
+            elif current_section == 'glob':
+                glob_lines.append(line)
+            elif current_section == 'interplay':
+                interplay_lines.append(line)
+        dom_part = "\n".join(dom_lines).strip()
+        glob_part = "\n".join(glob_lines).strip()
+        interplay_part = "\n".join(interplay_lines).strip()
+        
+    if dom_part and glob_part and interplay_part:
+        return dom_part, glob_part, interplay_part
+    raise Exception(f"Could not parse three sections. Response text was:\n{text}")
 
 def analyze_news(headlines):
     """Backward compatible wrapper — returns (avg, scored, primary) without events."""
@@ -3613,14 +3615,16 @@ def main():
         
         if gemini_key_to_use:
             # Use session state to avoid re-calling API on every Streamlit rerun
-            if 'gemini_macro_cache' not in st.session_state:
+            if 'gemini_macro_cache' not in st.session_state or st.session_state.gemini_macro_cache is None:
                 indian_news = msent.get("indian_headlines", [])
                 global_news = msent.get("global_headlines", [])
                 try:
                     g_macro = generate_gemini_intelligence("NIFTY & SENSEX", indian_news, global_news, gemini_key_to_use)
                     st.session_state.gemini_macro_cache = g_macro
-                except Exception:
+                except Exception as e:
                     st.session_state.gemini_macro_cache = None
+                    st.error(f"⚠️ Gemini Macro Analysis Error: {e}")
+                    g_macro = None
             else:
                 g_macro = st.session_state.gemini_macro_cache
             
@@ -3715,6 +3719,9 @@ def main():
         default_gemini_key = st.secrets.get("GEMINI_API_KEY", os.environ.get("GEMINI_API_KEY", "")) if hasattr(st, "secrets") else os.environ.get("GEMINI_API_KEY", "")
         gemini_key = st.text_input("Gemini API Key", value=default_gemini_key, type="password", help="Enter a free Gemini API Key from Google AI Studio to enable deep market reasoner analysis.")
         if gemini_key:
+            if st.session_state.get('gemini_api_key', '') != gemini_key:
+                # Key changed, invalidate cache to allow immediate retry/generation
+                st.session_state.gemini_macro_cache = None
             st.session_state.gemini_api_key = gemini_key
             st.success("🤖 Gemini Active!")
         else:

@@ -3606,21 +3606,29 @@ def main():
         # Gemini Macro Synthesis on Explore Page
         gemini_key_to_use = st.session_state.get('gemini_api_key', '')
         if not gemini_key_to_use:
-            gemini_key_to_use = st.secrets.get("GEMINI_API_KEY", os.environ.get("GEMINI_API_KEY", "")) if hasattr(st, "secrets") else os.environ.get("GEMINI_API_KEY", "")
-            
+            try:
+                gemini_key_to_use = st.secrets.get("GEMINI_API_KEY", os.environ.get("GEMINI_API_KEY", ""))
+            except Exception:
+                gemini_key_to_use = os.environ.get("GEMINI_API_KEY", "")
+        
         if gemini_key_to_use:
-            # Cache the macro call for 10 minutes to save API quota on page refreshes
-            @st.cache_data(ttl=600)
-            def get_cached_gemini_macro(indian_headlines, global_headlines, key):
-                return generate_gemini_intelligence("NIFTY & SENSEX", indian_headlines, global_headlines, key)
+            # Use session state to avoid re-calling API on every Streamlit rerun
+            if 'gemini_macro_cache' not in st.session_state:
+                indian_news = msent.get("indian_headlines", [])
+                global_news = msent.get("global_headlines", [])
+                try:
+                    g_macro = generate_gemini_intelligence("NIFTY & SENSEX", indian_news, global_news, gemini_key_to_use)
+                    st.session_state.gemini_macro_cache = g_macro
+                except Exception:
+                    st.session_state.gemini_macro_cache = None
+            else:
+                g_macro = st.session_state.gemini_macro_cache
             
-            g_macro = get_cached_gemini_macro(msent["indian_headlines"], msent["global_headlines"], gemini_key_to_use)
-            if g_macro:
+            if g_macro and len(g_macro) == 3:
                 g_dom, g_glob, g_inter = g_macro
                 st.markdown(f'''
                 <div style="background: rgba(99,102,241,0.06); border: 1px solid rgba(99,102,241,0.15); border-left: 6px solid #6366f1; padding: 18px; border-radius: 12px; margin-top: 15px; margin-bottom: 15px; box-shadow: 0 4px 15px rgba(0,0,0,0.15);">
-                    <div style="font-size: 1.1rem; font-weight: 800; color: #a78bfa; margin-bottom: 15px; display: flex; align-items: center; gap: 8px;">🧠 Gemini Macro Market Intelligence</div>
-                    
+                    <div style="font-size: 1.1rem; font-weight: 800; color: #a78bfa; margin-bottom: 15px;">🧠 Gemini Macro Market Intelligence</div>
                     <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 15px; margin-bottom: 15px;">
                         <div style="background: rgba(16, 185, 129, 0.05); border: 1px solid rgba(16, 185, 129, 0.15); border-left: 5px solid #10b981; padding: 15px; border-radius: 10px;">
                             <div style="font-size: 0.75rem; color: #a1a1aa; text-transform: uppercase; font-weight: 800; letter-spacing: 0.5px;">🇮🇳 Indian Market Drivers</div>
@@ -3631,14 +3639,15 @@ def main():
                             <div style="font-size: 0.9rem; color: #f4f4f5; line-height: 1.5; margin-top: 6px; font-weight: 500;">{g_glob}</div>
                         </div>
                     </div>
-                    
                     <div style="background: rgba(245, 158, 11, 0.05); border: 1px solid rgba(245, 158, 11, 0.15); border-left: 5px solid #f59e0b; padding: 15px; border-radius: 10px;">
                         <div style="font-size: 0.75rem; color: #a1a1aa; text-transform: uppercase; font-weight: 800; letter-spacing: 0.5px;">⚡ Connected Macro Analysis (Interplay)</div>
                         <div style="font-size: 0.9rem; color: #f4f4f5; line-height: 1.5; margin-top: 6px; font-weight: 500;">{g_inter}</div>
                     </div>
                 </div>
                 ''', unsafe_allow_html=True)
-                
+            else:
+                st.info("🧠 Gemini is active. Reload the page once to generate the analysis.")
+
         st.markdown('<br>', unsafe_allow_html=True)
 
     ticker_html = '<div class="ticker-bar">'

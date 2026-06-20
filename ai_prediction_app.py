@@ -1420,6 +1420,97 @@ def analyze_news_v2(headlines):
     
     return round(avg, 3), scored, primary, events
 
+def generate_gemini_intelligence(symbol, domestic_news, global_news, api_key):
+    """
+    Uses Gemini API to synthesize and connect domestic stock news and global market conditions.
+    Returns: (domestic_catalyst, global_catalyst, correlation_text)
+    """
+    # Format the news items
+    dom_str = "\n".join([f"- {h.get('title', h)}" for h in domestic_news[:7]])
+    glob_str = "\n".join([f"- {h.get('title', h)}" for h in global_news[:5]])
+    
+    prompt = f"""
+    You are an expert financial analyst. Analyze these stock news headlines for {symbol} (domestic market) and global macro-economic news:
+    
+    Domestic News for {symbol}:
+    {dom_str}
+    
+    Global Macro News:
+    {glob_str}
+    
+    Provide a synthesized analysis split into exactly three sections:
+    1. DOMESTIC CATALYST: A concise, insightful summary of the key local factors affecting {symbol} (e.g., IPOs, earnings, expansions). (Max 120 words)
+    2. GLOBAL DRIVER: A concise, insightful summary of the key international macroeconomic factors (e.g., Fed rates, oil prices, geopolitical issues). (Max 120 words)
+    3. INTERPLAY: A clear explanation of how these two forces interact (e.g., how Fed rates impact FII inflows needed for domestic IPO success, or how global drivers limit local positives). (Max 100 words)
+    
+    Make the tone professional, sharp, and easy to read. Write the response in English.
+    Format your response EXACTLY like this:
+    [DOMESTIC]
+    <Domestic analysis content>
+    [GLOBAL]
+    <Global analysis content>
+    [INTERPLAY]
+    <Interplay content>
+    """
+    
+    try:
+        import requests
+        import json
+        url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={api_key}"
+        headers = {
+            "Content-Type": "application/json"
+        }
+        payload = {
+            "contents": [{
+                "parts": [{
+                    "text": prompt
+                }]
+            }]
+        }
+        r = requests.post(url, headers=headers, json=payload, timeout=12)
+        if r.status_code == 200:
+            data = r.json()
+            text = data['candidates'][0]['content']['parts'][0]['text']
+            
+            # Parse the response
+            dom_part, glob_part, interplay_part = "", "", ""
+            if '[DOMESTIC]' in text and '[GLOBAL]' in text and '[INTERPLAY]' in text:
+                parts = text.split('[GLOBAL]')
+                dom_part = parts[0].replace('[DOMESTIC]', '').strip()
+                parts_2 = parts[1].split('[INTERPLAY]')
+                glob_part = parts_2[0].strip()
+                interplay_part = parts_2[1].strip()
+            else:
+                lines = text.split('\n')
+                current_section = None
+                dom_lines, glob_lines, interplay_lines = [], [], []
+                for line in lines:
+                    if 'DOMESTIC' in line.upper():
+                        current_section = 'dom'
+                        continue
+                    elif 'GLOBAL' in line.upper():
+                        current_section = 'glob'
+                        continue
+                    elif 'INTERPLAY' in line.upper():
+                        current_section = 'interplay'
+                        continue
+                    
+                    if current_section == 'dom':
+                        dom_lines.append(line)
+                    elif current_section == 'glob':
+                        glob_lines.append(line)
+                    elif current_section == 'interplay':
+                        interplay_lines.append(line)
+                dom_part = "\n".join(dom_lines).strip()
+                glob_part = "\n".join(glob_lines).strip()
+                interplay_part = "\n".join(interplay_lines).strip()
+                
+            if dom_part and glob_part and interplay_part:
+                return dom_part, glob_part, interplay_part
+        return None
+    except Exception:
+        return None
+
 def analyze_news(headlines):
     """Backward compatible wrapper — returns (avg, scored, primary) without events."""
     result = analyze_news_v2(headlines)
@@ -3568,6 +3659,23 @@ def main():
         st.caption("🤖 **Auto-Verification Active**: Tracking SL/Target hits.")
         
         st.markdown("---")
+        st.markdown(f'''
+            <div style="display: flex; align-items: center; margin-bottom: 10px;">
+                <span style="font-size: 1.5rem; margin-right: 10px;">🔑</span>
+                <span style="font-size: 1.3rem; font-weight: 700; color: #f8fafc;">Gemini AI Intelligence</span>
+            </div>
+        ''', unsafe_allow_html=True)
+        
+        # Check for key in secrets or environment, default to empty
+        default_gemini_key = st.secrets.get("GEMINI_API_KEY", os.environ.get("GEMINI_API_KEY", "")) if hasattr(st, "secrets") else os.environ.get("GEMINI_API_KEY", "")
+        gemini_key = st.text_input("Gemini API Key", value=default_gemini_key, type="password", help="Enter a free Gemini API Key from Google AI Studio to enable deep market reasoner analysis.")
+        if gemini_key:
+            st.session_state.gemini_api_key = gemini_key
+            st.success("🤖 Gemini Active!")
+        else:
+            st.info("💡 Enter key for rich domestic vs global reasoning.")
+            
+        st.markdown("---")
         st.caption("**Data Sources**")
         st.caption("✅ Yahoo Finance Live")
         st.caption("✅ MoneyControl News")
@@ -4265,6 +4373,26 @@ def page_prediction():
                     st.session_state.pred_events = local_events
                     st.session_state.pred_sector = sec_sent
                     
+                    # Check for Gemini API key
+                    gemini_key_to_use = st.session_state.get('gemini_api_key', '')
+                    if not gemini_key_to_use:
+                        gemini_key_to_use = st.secrets.get("GEMINI_API_KEY", os.environ.get("GEMINI_API_KEY", "")) if hasattr(st, "secrets") else os.environ.get("GEMINI_API_KEY", "")
+                    
+                    if gemini_key_to_use:
+                        try:
+                            g_res = generate_gemini_intelligence(symbol, local_news, master_sent.get('global_headlines', []), gemini_key_to_use)
+                            if g_res:
+                                st.session_state.pred_gemini_dom, st.session_state.pred_gemini_glob, st.session_state.pred_gemini_interplay = g_res
+                            else:
+                                for k in ['pred_gemini_dom', 'pred_gemini_glob', 'pred_gemini_interplay']:
+                                    if k in st.session_state: st.session_state.pop(k, None)
+                        except Exception:
+                            for k in ['pred_gemini_dom', 'pred_gemini_glob', 'pred_gemini_interplay']:
+                                if k in st.session_state: st.session_state.pop(k, None)
+                    else:
+                        for k in ['pred_gemini_dom', 'pred_gemini_glob', 'pred_gemini_interplay']:
+                            if k in st.session_state: st.session_state.pop(k, None)
+                    
                     # For legacy fallback in train
                     sent = news_score
 
@@ -4700,8 +4828,10 @@ def page_prediction():
 
         # 4. AI Market Intelligence (News, Sector, Events)
         st.markdown('<div class="section-head">🧠 AI Market Intelligence</div>', unsafe_allow_html=True)
-        local_cat = st.session_state.get('pred_local_catalyst', 'Stable domestic market conditions.')
-        global_cat = st.session_state.get('pred_global_catalyst', 'Neutral global queues.')
+        # Check for Gemini synthesis
+        gemini_dom = st.session_state.get('pred_gemini_dom', None)
+        gemini_glob = st.session_state.get('pred_gemini_glob', None)
+        gemini_interplay = st.session_state.get('pred_gemini_interplay', None)
         
         # New Intelligence Details
         sec_data = st.session_state.get('pred_sector', {'label': 'Neutral', 'sector': 'Unknown'})
@@ -4710,16 +4840,42 @@ def page_prediction():
         evt_color = "#10b981" if evt_data['impact_score'] > 0 else "#ef4444" if evt_data['impact_score'] < 0 else "#94a3b8"
         sec_color = "#10b981" if "Positive" in sec_data['label'] else "#ef4444" if "Negative" in sec_data['label'] else "#94a3b8"
         
-        st.markdown(f'''
-        <div style="background: rgba(99,102,241,0.08); border: 1px solid rgba(99,102,241,0.2); border-left: 6px solid #6366f1; padding: 15px 20px; border-radius: 10px; margin-bottom: 20px; font-size: 0.9rem; line-height: 1.6; color: #cbd5e1; display: grid; gap: 8px;">
-            <div><b style="color: #a78bfa; margin-right: 8px;">🔥 {sec_data['sector']} Sector:</b> <span style="color: {sec_color}; font-weight: 600;">{sec_data['label']}</span></div>
-            <div><b style="color: #a78bfa; margin-right: 8px;">⚡ Financial Event:</b> <span style="color: {evt_color}; font-weight: 600;">{evt_data['description']}</span></div>
-            <div style="margin-top: 5px; padding-top: 8px; border-top: 1px solid rgba(255,255,255,0.05);">
-                <b>🇮🇳 Stock Catalyst:</b> {local_cat}<br>
-                <b>🌎 Global Driver:</b> {global_cat}
+        if gemini_dom and gemini_glob and gemini_interplay:
+            st.markdown(f'''
+            <div style="background: rgba(99,102,241,0.08); border: 1px solid rgba(99,102,241,0.2); border-left: 6px solid #6366f1; padding: 15px 20px; border-radius: 10px; margin-bottom: 15px; font-size: 0.9rem; line-height: 1.6; color: #cbd5e1; display: grid; gap: 8px;">
+                <div><b style="color: #a78bfa; margin-right: 8px;">🔥 {sec_data['sector']} Sector:</b> <span style="color: {sec_color}; font-weight: 600;">{sec_data['label']}</span></div>
+                <div><b style="color: #a78bfa; margin-right: 8px;">⚡ Financial Event:</b> <span style="color: {evt_color}; font-weight: 600;">{evt_data['description']}</span></div>
             </div>
-        </div>
-        ''', unsafe_allow_html=True)
+            
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 15px; margin-bottom: 15px;">
+                <div style="background: rgba(16, 185, 129, 0.06); border: 1px solid rgba(16, 185, 129, 0.15); border-left: 6px solid #10b981; padding: 18px; border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.15);">
+                    <div style="font-size: 0.75rem; color: #a1a1aa; text-transform: uppercase; font-weight: 800; letter-spacing: 0.5px;">🇮🇳 Domestic Catalyst</div>
+                    <div style="font-size: 0.95rem; color: #f4f4f5; line-height: 1.6; font-weight: 500; margin-top: 8px;">{gemini_dom}</div>
+                </div>
+                <div style="background: rgba(239, 68, 68, 0.06); border: 1px solid rgba(239, 68, 68, 0.15); border-left: 6px solid #ef4444; padding: 18px; border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.15);">
+                    <div style="font-size: 0.75rem; color: #a1a1aa; text-transform: uppercase; font-weight: 800; letter-spacing: 0.5px;">🌎 Global Driver</div>
+                    <div style="font-size: 0.95rem; color: #f4f4f5; line-height: 1.6; font-weight: 500; margin-top: 8px;">{gemini_glob}</div>
+                </div>
+            </div>
+            
+            <div style="background: rgba(245, 158, 11, 0.06); border: 1px solid rgba(245, 158, 11, 0.15); border-left: 6px solid #f59e0b; padding: 18px; border-radius: 12px; margin-bottom: 25px; box-shadow: 0 4px 15px rgba(0,0,0,0.15);">
+                <div style="font-size: 0.75rem; color: #a1a1aa; text-transform: uppercase; font-weight: 800; letter-spacing: 0.5px;">⚡ Macro Interplay (Connected Analysis)</div>
+                <div style="font-size: 0.95rem; color: #f4f4f5; line-height: 1.6; font-weight: 500; margin-top: 8px;">{gemini_interplay}</div>
+            </div>
+            ''', unsafe_allow_html=True)
+        else:
+            local_cat = st.session_state.get('pred_local_catalyst', 'Stable domestic market conditions.')
+            global_cat = st.session_state.get('pred_global_catalyst', 'Neutral global queues.')
+            st.markdown(f'''
+            <div style="background: rgba(99,102,241,0.08); border: 1px solid rgba(99,102,241,0.2); border-left: 6px solid #6366f1; padding: 15px 20px; border-radius: 10px; margin-bottom: 20px; font-size: 0.9rem; line-height: 1.6; color: #cbd5e1; display: grid; gap: 8px;">
+                <div><b style="color: #a78bfa; margin-right: 8px;">🔥 {sec_data['sector']} Sector:</b> <span style="color: {sec_color}; font-weight: 600;">{sec_data['label']}</span></div>
+                <div><b style="color: #a78bfa; margin-right: 8px;">⚡ Financial Event:</b> <span style="color: {evt_color}; font-weight: 600;">{evt_data['description']}</span></div>
+                <div style="margin-top: 5px; padding-top: 8px; border-top: 1px solid rgba(255,255,255,0.05);">
+                    <b>🇮🇳 Stock Catalyst:</b> {local_cat}<br>
+                    <b>🌎 Global Driver:</b> {global_cat}
+                </div>
+            </div>
+            ''', unsafe_allow_html=True)
 
         # 5. CANDLE CHART
         st.markdown('<div class="section-head">📊 Market Pulse & Patterns</div>', unsafe_allow_html=True)

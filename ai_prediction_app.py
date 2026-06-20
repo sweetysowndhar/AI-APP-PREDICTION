@@ -3724,6 +3724,11 @@ def main():
                 st.session_state.gemini_macro_cache = None
             st.session_state.gemini_api_key = gemini_key
             st.success("🤖 Gemini Active!")
+            with st.expander("🔍 Gemini Debug Details"):
+                st.write("Cache State:", "Loaded" if st.session_state.get('gemini_macro_cache') is not None else "Empty/None")
+                if st.button("Force Clear Gemini Cache"):
+                    st.session_state.gemini_macro_cache = None
+                    st.rerun()
         else:
             st.info("💡 Enter key for rich domestic vs global reasoning.")
             

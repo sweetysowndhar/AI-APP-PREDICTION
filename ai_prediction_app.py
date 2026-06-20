@@ -1803,7 +1803,7 @@ class AIEngine:
         near_382 = abs(current_price - fib_levels.get(0.382, 0)) <= tolerance
         return near_618, near_50, near_382
 
-    def train(self, symbol, prices, volumes, news_sent=0.0):
+    def train(self, symbol, prices, volumes, news_sent=0.0, intraday=False):
         # Fetch global index trends for feature correlation
         try:
             g_df = yf.download('^GSPC', period='1y', interval='1d', progress=False)
@@ -1822,8 +1822,13 @@ class AIEngine:
         avg_vol = np.mean(returns) if len(returns) > 0 else 0.01
         
         # Scale targets: More volatile stocks get wider targets, stable ETFs get tighter targets
-        # Min 0.8% target, Max 4% target
-        PROFIT_TARGET = max(0.008, min(0.04, avg_vol * 1.5))
+        if intraday:
+            # Lower thresholds for intraday (15 min interval)
+            # Min 0.15% target, Max 1.5% target
+            PROFIT_TARGET = max(0.0015, min(0.015, avg_vol * 1.5))
+        else:
+            # Daily swing target (Min 0.8% target, Max 4% target)
+            PROFIT_TARGET = max(0.008, min(0.04, avg_vol * 1.5))
         STOP_LOSS = PROFIT_TARGET / 2.0
         
         for i in range(30, len(prices)-10):
@@ -4264,7 +4269,7 @@ def page_prediction():
                     sent = news_score
 
                 with st.spinner("🧠 Training Engine..."):
-                    metrics = st.session_state.engine_v2.train(symbol, prices, volumes, sent)
+                    metrics = st.session_state.engine_v2.train(symbol, prices, volumes, sent, intraday=is_intra)
                     st.session_state.pred_metrics = metrics
                 
                 with st.spinner("📡 TradingView Bias..."):

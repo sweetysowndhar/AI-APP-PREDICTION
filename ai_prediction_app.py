@@ -3606,12 +3606,12 @@ def main():
                     scls = {'positive':'sentiment-pos','negative':'sentiment-neg'}.get(h['label'],'sentiment-neu')
                     st.markdown(f'''<div class="news-card"><span class="{scls}">[{h["label"].upper()}]</span> {h["title"]}</div>''', unsafe_allow_html=True)
         # Gemini Macro Synthesis on Explore Page
-        gemini_key_to_use = st.session_state.get('gemini_api_key', '')
+        gemini_key_to_use = st.session_state.get('gemini_api_key', '').strip()
         if not gemini_key_to_use:
             try:
-                gemini_key_to_use = st.secrets.get("GEMINI_API_KEY", os.environ.get("GEMINI_API_KEY", ""))
+                gemini_key_to_use = st.secrets.get("GEMINI_API_KEY", os.environ.get("GEMINI_API_KEY", "")).strip()
             except Exception:
-                gemini_key_to_use = os.environ.get("GEMINI_API_KEY", "")
+                gemini_key_to_use = os.environ.get("GEMINI_API_KEY", "").strip()
         
         if gemini_key_to_use:
             # Use session state to avoid re-calling API on every Streamlit rerun
@@ -3717,8 +3717,9 @@ def main():
         
         # Check for key in secrets or environment, default to empty
         default_gemini_key = st.secrets.get("GEMINI_API_KEY", os.environ.get("GEMINI_API_KEY", "")) if hasattr(st, "secrets") else os.environ.get("GEMINI_API_KEY", "")
-        gemini_key = st.text_input("Gemini API Key", value=default_gemini_key, type="password", help="Enter a free Gemini API Key from Google AI Studio to enable deep market reasoner analysis.")
+        gemini_key = st.text_input("Gemini API Key", value=default_gemini_key.strip(), type="password", help="Enter a free Gemini API Key from Google AI Studio to enable deep market reasoner analysis.")
         if gemini_key:
+            gemini_key = gemini_key.strip()
             if st.session_state.get('gemini_api_key', '') != gemini_key:
                 # Key changed, invalidate cache to allow immediate retry/generation
                 st.session_state.gemini_macro_cache = None
@@ -4431,9 +4432,9 @@ def page_prediction():
                     st.session_state.pred_sector = sec_sent
                     
                     # Check for Gemini API key
-                    gemini_key_to_use = st.session_state.get('gemini_api_key', '')
+                    gemini_key_to_use = st.session_state.get('gemini_api_key', '').strip()
                     if not gemini_key_to_use:
-                        gemini_key_to_use = st.secrets.get("GEMINI_API_KEY", os.environ.get("GEMINI_API_KEY", "")) if hasattr(st, "secrets") else os.environ.get("GEMINI_API_KEY", "")
+                        gemini_key_to_use = st.secrets.get("GEMINI_API_KEY", os.environ.get("GEMINI_API_KEY", "")).strip() if hasattr(st, "secrets") else os.environ.get("GEMINI_API_KEY", "").strip()
                     
                     if gemini_key_to_use:
                         try:

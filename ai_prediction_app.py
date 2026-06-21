@@ -1973,10 +1973,16 @@ class AIEngine:
         return {'d1_acc': self.models[symbol]['d1']['acc'], 'd2_acc': self.models[symbol]['d2']['acc'], 'd3_acc': self.models[symbol]['d3']['acc'], 'd4_acc': self.models[symbol]['d4']['acc']}
 
     def predict(self, symbol, prices, volumes, news_sent=0.0, tv_sent=0.0, sector_score=0.0, event_score=0.0, intraday=False, df=None, df_1h=None, df_1d=None, df_15m=None):
+        model_symbol = symbol
         if symbol not in self.models:
-            if not self.load_model() or symbol not in self.models: return None
+            self.load_model()
+            if symbol not in self.models:
+                if self.models:
+                    model_symbol = list(self.models.keys())[0]
+                else:
+                    return None
         
-        sc = self.scalers[symbol]
+        sc = self.scalers[model_symbol]
         
         # 1. MTF Status Analysis
         main_status = self.get_timeframe_status(df)
@@ -2120,7 +2126,7 @@ class AIEngine:
         liquidity_sweep = self.detect_liquidity_sweeps(df)
         
         for label, step_key in zip(labels, steps):
-            m_set = self.models[symbol][step_key]
+            m_set = self.models[model_symbol][step_key]
             
             probs_rf = m_set['rf'].predict_proba(feat)[0]
             probs_gb = m_set['gb'].predict_proba(feat)[0]
@@ -4030,8 +4036,8 @@ def scan_institutional_setups(scan_target):
             volumes = df['Volume'].dropna().astype(float).tolist()
             sym = ticker_to_sym.get(ticker, ticker.replace('.NS', ''))
             
-            if sym not in engine.models:
-                # Do NOT train on the fly inside the parallel scanner loop to prevent deadlocks and network freezes
+            if not engine.models:
+                # If no models are loaded globally, we can't run predictions
                 return None
                 
             res = engine.predict(sym, prices, volumes, news_sent=0.0, tv_sent=0.0, intraday=False, df=df)

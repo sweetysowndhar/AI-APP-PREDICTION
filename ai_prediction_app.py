@@ -1791,10 +1791,14 @@ class AIEngine:
                 data = joblib.load(self.model_path)
                 self.models = data['models']
                 self.scalers = data['scalers']
+                self.load_error = None
                 return True
-            except Exception:
+            except Exception as e:
+                self.load_error = str(e)
                 return False
-        return False
+        else:
+            self.load_error = f"File {self.model_path} does not exist"
+            return False
 
     @staticmethod
     def _rsi(prices, period=14):
@@ -3725,8 +3729,13 @@ def main():
                 st.session_state.gemini_macro_cache = None
             st.session_state.gemini_api_key = gemini_key
             st.success("🤖 Gemini Active!")
-            with st.expander("🔍 Gemini Debug Details"):
-                st.write("Cache State:", "Loaded" if st.session_state.get('gemini_macro_cache') is not None else "Empty/None")
+            with st.expander("🔍 System Diagnostics"):
+                st.write("Gemini Cache State:", "Loaded" if st.session_state.get('gemini_macro_cache') is not None else "Empty/None")
+                engine = st.session_state.get('engine_v2')
+                if engine:
+                    st.write("Model count loaded:", len(engine.models))
+                    if hasattr(engine, 'load_error') and engine.load_error:
+                        st.write("Model load error:", engine.load_error)
                 if st.button("Force Clear Gemini Cache"):
                     st.session_state.gemini_macro_cache = None
                     st.rerun()
@@ -4009,7 +4018,8 @@ def scan_institutional_setups(scan_target):
             sym = ticker_to_sym.get(ticker, ticker.replace('.NS', ''))
             
             if sym not in engine.models:
-                engine.train(sym, prices, volumes, news_sent=0.0)
+                # Do NOT train on the fly inside the parallel scanner loop to prevent deadlocks and network freezes
+                return None
                 
             res = engine.predict(sym, prices, volumes, news_sent=0.0, tv_sent=0.0, intraday=False, df=df)
             

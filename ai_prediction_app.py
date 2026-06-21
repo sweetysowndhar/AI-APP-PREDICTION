@@ -3984,10 +3984,10 @@ def scan_institutional_setups(scan_target):
     if batch_df is None or batch_df.empty:
         return []
         
-    setups = []
+    import concurrent.futures
     is_multi = isinstance(batch_df.columns, pd.MultiIndex)
     
-    for ticker in tickers_to_download:
+    def process_single_ticker(ticker):
         try:
             if is_multi:
                 df = batch_df[ticker].dropna(subset=['Close'])
@@ -3995,8 +3995,9 @@ def scan_institutional_setups(scan_target):
                 df = batch_df.dropna(subset=['Close'])
                 
             if df is None or len(df) < 30:
-                continue
+                return None
                 
+            df = df.copy()
             df.columns = [c.capitalize() for c in df.columns]
             
             smc = engine.detect_smc_features(df)
@@ -4025,7 +4026,7 @@ def scan_institutional_setups(scan_target):
                     ob_type_str = f"{closest_ob['type']} OB" if closest_ob else "No OB"
                     ob_dist_val = closest_ob_dist if closest_ob else 999.0
                     
-                    setups.append({
+                    return {
                         'symbol': sym,
                         'ticker': ticker,
                         'signal': signal,
@@ -4037,10 +4038,15 @@ def scan_institutional_setups(scan_target):
                         'age': age_str,
                         'freshness': freshness,
                         'price': float(df['Close'].iloc[-1])
-                    })
+                    }
         except Exception:
-            continue
-            
+            pass
+        return None
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=10) as executor:
+        results = list(executor.map(process_single_ticker, tickers_to_download))
+        
+    setups = [r for r in results if r is not None]
     return sorted(setups, key=lambda x: -x['confidence'])
 
 def page_explore():
@@ -4062,153 +4068,155 @@ def page_explore():
         setups = scan_institutional_setups(scan_target)
         
     if setups:
-        # Find top BUY and top SELL setups for options recommendations
-        top_buy = next((s for s in setups if "BUY" in s['signal']), None)
-        top_sell = next((s for s in setups if "SELL" in s['signal']), None)
+        tab_scanner, tab_options = st.tabs(["🔍 Live AI Setup Scanner", "🎯 Option Trade Alerts (CALL / PUT)"])
         
-        if top_buy or top_sell:
-            st.markdown('<div style="font-size: 1.15rem; font-weight: 800; color: #f8fafc; margin-top: 15px; margin-bottom: 15px; display: flex; align-items: center;">🎯 Premium Option Trade Alerts (CALL vs PUT candidates)</div>', unsafe_allow_html=True)
-            col_buy, col_sell = st.columns(2)
-            
-            with col_buy:
-                if top_buy:
-                    tb_curr = '₹' if (top_buy['ticker'].endswith('.NS') or top_buy['ticker'].endswith('.BO') or top_buy['ticker'].startswith('^')) else '$'
-                    st.markdown(f'''
-                    <div style="background: linear-gradient(135deg, rgba(16, 185, 129, 0.08) 0%, rgba(16, 185, 129, 0.02) 100%); border: 1px solid rgba(16, 185, 129, 0.25); border-left: 6px solid #10b981; padding: 18px; border-radius: 12px; height: 100%; box-shadow: 0 4px 15px rgba(0,0,0,0.15);">
-                        <div style="display: flex; justify-content: space-between; align-items: center;">
-                            <span style="font-size: 0.8rem; background: rgba(16, 185, 129, 0.2); color: #10b981; padding: 3px 8px; border-radius: 6px; font-weight: 800; text-transform: uppercase;">🚀 Buy Call Option (CE)</span>
-                            <span style="font-size: 0.75rem; color: #94a3b8; font-weight: 600;">Confidence: <b style="color: #10b981;">{top_buy['confidence']:.0%}</b></span>
-                        </div>
-                        <div style="font-size: 1.6rem; font-weight: 900; color: #ffffff; margin-top: 12px; margin-bottom: 4px;">{top_buy['symbol']}</div>
-                        <div style="font-size: 0.8rem; color: #94a3b8; font-family: monospace; margin-bottom: 12px;">{top_buy['ticker']}</div>
-                        
-                        <div style="display: flex; gap: 15px; margin-bottom: 15px; background: rgba(255,255,255,0.02); padding: 10px; border-radius: 8px;">
-                            <div style="flex: 1;">
-                                <div style="font-size: 0.65rem; color: #64748b; text-transform: uppercase; font-weight: 700;">Stock Price</div>
-                                <div style="font-size: 1.15rem; font-weight: 800; color: #f1f5f9; font-family: monospace;">{tb_curr}{top_buy['price']:,.2f}</div>
-                            </div>
-                            <div style="flex: 1;">
-                                <div style="font-size: 0.65rem; color: #64748b; text-transform: uppercase; font-weight: 700;">OB Distance</div>
-                                <div style="font-size: 1.15rem; font-weight: 800; color: #10b981; font-family: monospace;">{top_buy['ob_dist']:.2f}%</div>
-                            </div>
-                            <div style="flex: 1;">
-                                <div style="font-size: 0.65rem; color: #64748b; text-transform: uppercase; font-weight: 700;">OB Type</div>
-                                <div style="font-size: 1.15rem; font-weight: 800; color: #fbbf24; font-family: monospace;">{top_buy['ob_type']}</div>
-                            </div>
-                        </div>
-                        
-                        <div style="font-size: 0.82rem; color: #e2e8f0; line-height: 1.5; font-weight: 500;">
-                            <b>Trading Bias:</b> {top_buy['symbol']} has pulled back to institutional support ({top_buy['ob_type']}). Perfect scenario to <b>Buy Call Option (CE)</b> or buy cash shares for high-probability recovery.
-                        </div>
-                    </div>
-                    ''', unsafe_allow_html=True)
+        with tab_scanner:
+            rows_html = ""
+            for i, setup in enumerate(setups[:10]):
+                rank = i + 1
+                if rank == 1:
+                    rank_str = '<span style="color: #fbbf24; font-weight: 950; font-size: 1.15rem;">#1 👑</span>'
+                elif rank == 2:
+                    rank_str = '<span style="color: #cbd5e1; font-weight: 950; font-size: 1.1rem;">#2</span>'
+                elif rank == 3:
+                    rank_str = '<span style="color: #b45309; font-weight: 950; font-size: 1.1rem;">#3</span>'
                 else:
-                    st.markdown('''
-                    <div style="background: rgba(255,255,255,0.02); border: 1px dashed rgba(255,255,255,0.1); padding: 25px; border-radius: 12px; text-align: center; color: #64748b; height: 100%; display: flex; flex-direction: column; justify-content: center; align-items: center;">
-                        <span style="font-size: 2rem; margin-bottom: 10px;">🛡️</span>
-                        <div style="font-size: 0.9rem; font-weight: 700;">No CALL recommendation today</div>
-                    </div>
-                    ''', unsafe_allow_html=True)
+                    rank_str = f'<span style="color: #64748b; font-weight: 800;">#{rank}</span>'
                     
-            with col_sell:
-                if top_sell:
-                    ts_curr = '₹' if (top_sell['ticker'].endswith('.NS') or top_sell['ticker'].endswith('.BO') or top_sell['ticker'].startswith('^')) else '$'
-                    st.markdown(f'''
-                    <div style="background: linear-gradient(135deg, rgba(239, 68, 68, 0.08) 0%, rgba(239, 68, 68, 0.02) 100%); border: 1px solid rgba(239, 68, 68, 0.25); border-left: 6px solid #ef4444; padding: 18px; border-radius: 12px; height: 100%; box-shadow: 0 4px 15px rgba(0,0,0,0.15);">
-                        <div style="display: flex; justify-content: space-between; align-items: center;">
-                            <span style="font-size: 0.8rem; background: rgba(239, 68, 68, 0.2); color: #ef4444; padding: 3px 8px; border-radius: 6px; font-weight: 800; text-transform: uppercase;">📉 Buy Put Option (PE)</span>
-                            <span style="font-size: 0.75rem; color: #94a3b8; font-weight: 600;">Confidence: <b style="color: #ef4444;">{top_sell['confidence']:.0%}</b></span>
-                        </div>
-                        <div style="font-size: 1.6rem; font-weight: 900; color: #ffffff; margin-top: 12px; margin-bottom: 4px;">{top_sell['symbol']}</div>
-                        <div style="font-size: 0.8rem; color: #94a3b8; font-family: monospace; margin-bottom: 12px;">{top_sell['ticker']}</div>
-                        
-                        <div style="display: flex; gap: 15px; margin-bottom: 15px; background: rgba(255,255,255,0.02); padding: 10px; border-radius: 8px;">
-                            <div style="flex: 1;">
-                                <div style="font-size: 0.65rem; color: #64748b; text-transform: uppercase; font-weight: 700;">Stock Price</div>
-                                <div style="font-size: 1.15rem; font-weight: 800; color: #f1f5f9; font-family: monospace;">{ts_curr}{top_sell['price']:,.2f}</div>
-                            </div>
-                            <div style="flex: 1;">
-                                <div style="font-size: 0.65rem; color: #64748b; text-transform: uppercase; font-weight: 700;">OB Distance</div>
-                                <div style="font-size: 1.15rem; font-weight: 800; color: #ef4444; font-family: monospace;">{top_sell['ob_dist']:.2f}%</div>
-                            </div>
-                            <div style="flex: 1;">
-                                <div style="font-size: 0.65rem; color: #64748b; text-transform: uppercase; font-weight: 700;">OB Type</div>
-                                <div style="font-size: 1.15rem; font-weight: 800; color: #fbbf24; font-family: monospace;">{top_sell['ob_type']}</div>
-                            </div>
-                        </div>
-                        
-                        <div style="font-size: 0.82rem; color: #e2e8f0; line-height: 1.5; font-weight: 500;">
-                            <b>Trading Bias:</b> {top_sell['symbol']} has rallied up to institutional resistance ({top_sell['ob_type']}). Perfect scenario to <b>Buy Put Option (PE)</b> or sell/short for high-probability correction.
-                        </div>
-                    </div>
-                    ''', unsafe_allow_html=True)
-                else:
-                    st.markdown('''
-                    <div style="background: rgba(255,255,255,0.02); border: 1px dashed rgba(255,255,255,0.1); padding: 25px; border-radius: 12px; text-align: center; color: #64748b; height: 100%; display: flex; flex-direction: column; justify-content: center; align-items: center;">
-                        <span style="font-size: 2rem; margin-bottom: 10px;">🛡️</span>
-                        <div style="font-size: 0.9rem; font-weight: 700;">No PUT recommendation today</div>
-                    </div>
-                    ''', unsafe_allow_html=True)
-            st.markdown('<br>', unsafe_allow_html=True)
-
-        rows_html = ""
-        for i, setup in enumerate(setups[:10]):
-            rank = i + 1
-            if rank == 1:
-                rank_str = '<span style="color: #fbbf24; font-weight: 950; font-size: 1.15rem;">#1 👑</span>'
-            elif rank == 2:
-                rank_str = '<span style="color: #cbd5e1; font-weight: 950; font-size: 1.1rem;">#2</span>'
-            elif rank == 3:
-                rank_str = '<span style="color: #b45309; font-weight: 950; font-size: 1.1rem;">#3</span>'
-            else:
-                rank_str = f'<span style="color: #64748b; font-weight: 800;">#{rank}</span>'
+                sig_color = "#10b981" if "BUY" in setup['signal'] else "#ef4444"
+                sig_bg = "rgba(16, 185, 129, 0.15)" if "BUY" in setup['signal'] else "rgba(239, 68, 68, 0.15)"
                 
-            sig_color = "#10b981" if "BUY" in setup['signal'] else "#ef4444"
-            sig_bg = "rgba(16, 185, 129, 0.15)" if "BUY" in setup['signal'] else "rgba(239, 68, 68, 0.15)"
-            
-            is_indian = setup['ticker'].endswith('.NS') or setup['ticker'].endswith('.BO') or setup['ticker'].startswith('^')
-            curr = '₹' if is_indian else '$'
-            
-            direction_badge = f'<span style="background: {sig_bg}; color: {sig_color}; padding: 4px 10px; border-radius: 6px; font-size: 0.75rem; font-weight: 800; display: inline-block;">{setup["signal"]}</span>'
-            
-            stars_str = '★' * setup['stars'] + '☆' * (5 - setup['stars'])
-            row_bg = "rgba(255, 255, 255, 0.02)" if i % 2 == 0 else "transparent"
-            
-            rows_html += f"""
-            <tr style="border-bottom: 1px solid rgba(255, 255, 255, 0.04); background: {row_bg}; font-size: 0.85rem;">
-                <td style="padding: 14px 16px; font-weight: 800;">{rank_str}</td>
-                <td style="padding: 14px 16px;"><span style="font-weight: 900; color: #ffffff;">{setup['symbol']}</span><br><span style="font-size: 0.65rem; color: #64748b; font-family: monospace;">{setup['ticker']}</span></td>
-                <td style="padding: 14px 16px;">{direction_badge}</td>
-                <td style="padding: 14px 16px;"><span style="font-family: monospace; font-weight: 700; color: #f1f5f9;">{curr}{setup['price']:,.2f}</span></td>
-                <td style="padding: 14px 16px; text-align: center;"><span style="font-weight: 900; color: {sig_color}; font-size: 1rem;">{setup['confidence']:.0%}</span></td>
-                <td style="padding: 14px 16px; text-align: center; color: #fbbf24; font-size: 0.9rem; letter-spacing: 1px;">{stars_str}</td>
-                <td style="padding: 14px 16px; text-align: center;"><span style="font-family: monospace; font-weight: 700; color: #f3f4f6;">{setup['ob_dist']:.2f}%</span><br><span style="font-size: 0.65rem; color: #64748b;">({setup['ob_type']})</span></td>
-                <td style="padding: 14px 16px; text-align: right;"><span style="color: #10b981; font-weight: 700;">{setup['freshness']}%</span><br><span style="font-size: 0.7rem; color: #94a3b8;">{setup['age']}</span></td>
-            </tr>
+                is_indian = setup['ticker'].endswith('.NS') or setup['ticker'].endswith('.BO') or setup['ticker'].startswith('^')
+                curr = '₹' if is_indian else '$'
+                
+                direction_badge = f'<span style="background: {sig_bg}; color: {sig_color}; padding: 4px 10px; border-radius: 6px; font-size: 0.75rem; font-weight: 800; display: inline-block;">{setup["signal"]}</span>'
+                
+                stars_str = '★' * setup['stars'] + '☆' * (5 - setup['stars'])
+                row_bg = "rgba(255, 255, 255, 0.02)" if i % 2 == 0 else "transparent"
+                
+                rows_html += f"""
+                <tr style="border-bottom: 1px solid rgba(255, 255, 255, 0.04); background: {row_bg}; font-size: 0.85rem;">
+                    <td style="padding: 14px 16px; font-weight: 800;">{rank_str}</td>
+                    <td style="padding: 14px 16px;"><span style="font-weight: 900; color: #ffffff;">{setup['symbol']}</span><br><span style="font-size: 0.65rem; color: #64748b; font-family: monospace;">{setup['ticker']}</span></td>
+                    <td style="padding: 14px 16px;">{direction_badge}</td>
+                    <td style="padding: 14px 16px;"><span style="font-family: monospace; font-weight: 700; color: #f1f5f9;">{curr}{setup['price']:,.2f}</span></td>
+                    <td style="padding: 14px 16px; text-align: center;"><span style="font-weight: 900; color: {sig_color}; font-size: 1rem;">{setup['confidence']:.0%}</span></td>
+                    <td style="padding: 14px 16px; text-align: center; color: #fbbf24; font-size: 0.9rem; letter-spacing: 1px;">{stars_str}</td>
+                    <td style="padding: 14px 16px; text-align: center;"><span style="font-family: monospace; font-weight: 700; color: #f3f4f6;">{setup['ob_dist']:.2f}%</span><br><span style="font-size: 0.65rem; color: #64748b;">({setup['ob_type']})</span></td>
+                    <td style="padding: 14px 16px; text-align: right;"><span style="color: #10b981; font-weight: 700;">{setup['freshness']}%</span><br><span style="font-size: 0.7rem; color: #94a3b8;">{setup['age']}</span></td>
+                </tr>
+                """
+                
+            table_html = f"""
+            <div style="background: rgba(17, 24, 39, 0.45); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); border-radius: 16px; border: 1px solid rgba(255, 255, 255, 0.05); padding: 20px; box-shadow: 0 4px 30px rgba(0, 0, 0, 0.25); overflow-x: auto; margin-bottom: 25px;">
+                <table style="width: 100%; border-collapse: collapse; text-align: left; color: #f8fafc; font-family: 'Inter', sans-serif;">
+                    <thead>
+                        <tr style="border-bottom: 2px solid rgba(255, 255, 255, 0.08); color: #94a3b8; font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.5px;">
+                            <th style="padding: 12px 16px; font-weight: 800;">Rank</th>
+                            <th style="padding: 12px 16px; font-weight: 800;">Stock</th>
+                            <th style="padding: 12px 16px; font-weight: 800;">Direction</th>
+                            <th style="padding: 12px 16px; font-weight: 800;">Price</th>
+                            <th style="padding: 12px 16px; font-weight: 800; text-align: center;">Confluence</th>
+                            <th style="padding: 12px 16px; font-weight: 800; text-align: center;">Stars</th>
+                            <th style="padding: 12px 16px; font-weight: 800; text-align: center;">Distance to OB</th>
+                            <th style="padding: 12px 16px; font-weight: 800; text-align: right;">Freshness</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {rows_html}
+                    </tbody>
+                </table>
+            </div>
             """
+            st.markdown(table_html, unsafe_allow_html=True)
             
-        table_html = f"""
-        <div style="background: rgba(17, 24, 39, 0.45); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); border-radius: 16px; border: 1px solid rgba(255, 255, 255, 0.05); padding: 20px; box-shadow: 0 4px 30px rgba(0, 0, 0, 0.25); overflow-x: auto; margin-bottom: 25px;">
-            <table style="width: 100%; border-collapse: collapse; text-align: left; color: #f8fafc; font-family: 'Inter', sans-serif;">
-                <thead>
-                    <tr style="border-bottom: 2px solid rgba(255, 255, 255, 0.08); color: #94a3b8; font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.5px;">
-                        <th style="padding: 12px 16px; font-weight: 800;">Rank</th>
-                        <th style="padding: 12px 16px; font-weight: 800;">Stock</th>
-                        <th style="padding: 12px 16px; font-weight: 800;">Direction</th>
-                        <th style="padding: 12px 16px; font-weight: 800;">Price</th>
-                        <th style="padding: 12px 16px; font-weight: 800; text-align: center;">Confluence</th>
-                        <th style="padding: 12px 16px; font-weight: 800; text-align: center;">Stars</th>
-                        <th style="padding: 12px 16px; font-weight: 800; text-align: center;">Distance to OB</th>
-                        <th style="padding: 12px 16px; font-weight: 800; text-align: right;">Freshness</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    {rows_html}
-                </tbody>
-            </table>
-        </div>
-        """
-        st.markdown(table_html, unsafe_allow_html=True)
+        with tab_options:
+            top_buy = next((s for s in setups if "BUY" in s['signal']), None)
+            top_sell = next((s for s in setups if "SELL" in s['signal']), None)
+            
+            if top_buy or top_sell:
+                st.markdown('<div style="font-size: 1.15rem; font-weight: 800; color: #f8fafc; margin-top: 15px; margin-bottom: 15px; display: flex; align-items: center;">🎯 Premium Option Trade Alerts (CALL vs PUT candidates)</div>', unsafe_allow_html=True)
+                col_buy, col_sell = st.columns(2)
+                
+                with col_buy:
+                    if top_buy:
+                        tb_curr = '₹' if (top_buy['ticker'].endswith('.NS') or top_buy['ticker'].endswith('.BO') or top_buy['ticker'].startswith('^')) else '$'
+                        st.markdown(f'''
+                        <div style="background: linear-gradient(135deg, rgba(16, 185, 129, 0.08) 0%, rgba(16, 185, 129, 0.02) 100%); border: 1px solid rgba(16, 185, 129, 0.25); border-left: 6px solid #10b981; padding: 18px; border-radius: 12px; height: 100%; box-shadow: 0 4px 15px rgba(0,0,0,0.15);">
+                            <div style="display: flex; justify-content: space-between; align-items: center;">
+                                <span style="font-size: 0.8rem; background: rgba(16, 185, 129, 0.2); color: #10b981; padding: 3px 8px; border-radius: 6px; font-weight: 800; text-transform: uppercase;">🚀 Buy Call Option (CE)</span>
+                                <span style="font-size: 0.75rem; color: #94a3b8; font-weight: 600;">Confidence: <b style="color: #10b981;">{top_buy['confidence']:.0%}</b></span>
+                            </div>
+                            <div style="font-size: 1.6rem; font-weight: 900; color: #ffffff; margin-top: 12px; margin-bottom: 4px;">{top_buy['symbol']}</div>
+                            <div style="font-size: 0.8rem; color: #94a3b8; font-family: monospace; margin-bottom: 12px;">{top_buy['ticker']}</div>
+                            
+                            <div style="display: flex; gap: 15px; margin-bottom: 15px; background: rgba(255,255,255,0.02); padding: 10px; border-radius: 8px;">
+                                <div style="flex: 1;">
+                                    <div style="font-size: 0.65rem; color: #64748b; text-transform: uppercase; font-weight: 700;">Stock Price</div>
+                                    <div style="font-size: 1.15rem; font-weight: 800; color: #f1f5f9; font-family: monospace;">{tb_curr}{top_buy['price']:,.2f}</div>
+                                </div>
+                                <div style="flex: 1;">
+                                    <div style="font-size: 0.65rem; color: #64748b; text-transform: uppercase; font-weight: 700;">OB Distance</div>
+                                    <div style="font-size: 1.15rem; font-weight: 800; color: #10b981; font-family: monospace;">{top_buy['ob_dist']:.2f}%</div>
+                                </div>
+                                <div style="flex: 1;">
+                                    <div style="font-size: 0.65rem; color: #64748b; text-transform: uppercase; font-weight: 700;">OB Type</div>
+                                    <div style="font-size: 1.15rem; font-weight: 800; color: #fbbf24; font-family: monospace;">{top_buy['ob_type']}</div>
+                                </div>
+                            </div>
+                            
+                            <div style="font-size: 0.82rem; color: #e2e8f0; line-height: 1.5; font-weight: 500;">
+                                <b>Trading Bias:</b> {top_buy['symbol']} has pulled back to institutional support ({top_buy['ob_type']}). Perfect scenario to <b>Buy Call Option (CE)</b> or buy cash shares for high-probability recovery.
+                            </div>
+                        </div>
+                        ''', unsafe_allow_html=True)
+                    else:
+                        st.markdown('''
+                        <div style="background: rgba(255,255,255,0.02); border: 1px dashed rgba(255,255,255,0.1); padding: 25px; border-radius: 12px; text-align: center; color: #64748b; height: 100%; display: flex; flex-direction: column; justify-content: center; align-items: center;">
+                            <span style="font-size: 2rem; margin-bottom: 10px;">🛡️</span>
+                            <div style="font-size: 0.9rem; font-weight: 700;">No CALL recommendation today</div>
+                        </div>
+                        ''', unsafe_allow_html=True)
+                        
+                with col_sell:
+                    if top_sell:
+                        ts_curr = '₹' if (top_sell['ticker'].endswith('.NS') or top_sell['ticker'].endswith('.BO') or top_sell['ticker'].startswith('^')) else '$'
+                        st.markdown(f'''
+                        <div style="background: linear-gradient(135deg, rgba(239, 68, 68, 0.08) 0%, rgba(239, 68, 68, 0.02) 100%); border: 1px solid rgba(239, 68, 68, 0.25); border-left: 6px solid #ef4444; padding: 18px; border-radius: 12px; height: 100%; box-shadow: 0 4px 15px rgba(0,0,0,0.15);">
+                            <div style="display: flex; justify-content: space-between; align-items: center;">
+                                <span style="font-size: 0.8rem; background: rgba(239, 68, 68, 0.2); color: #ef4444; padding: 3px 8px; border-radius: 6px; font-weight: 800; text-transform: uppercase;">📉 Buy Put Option (PE)</span>
+                                <span style="font-size: 0.75rem; color: #94a3b8; font-weight: 600;">Confidence: <b style="color: #ef4444;">{top_sell['confidence']:.0%}</b></span>
+                            </div>
+                            <div style="font-size: 1.6rem; font-weight: 900; color: #ffffff; margin-top: 12px; margin-bottom: 4px;">{top_sell['symbol']}</div>
+                            <div style="font-size: 0.8rem; color: #94a3b8; font-family: monospace; margin-bottom: 12px;">{top_sell['ticker']}</div>
+                            
+                            <div style="display: flex; gap: 15px; margin-bottom: 15px; background: rgba(255,255,255,0.02); padding: 10px; border-radius: 8px;">
+                                <div style="flex: 1;">
+                                    <div style="font-size: 0.65rem; color: #64748b; text-transform: uppercase; font-weight: 700;">Stock Price</div>
+                                    <div style="font-size: 1.15rem; font-weight: 800; color: #f1f5f9; font-family: monospace;">{ts_curr}{top_sell['price']:,.2f}</div>
+                                </div>
+                                <div style="flex: 1;">
+                                    <div style="font-size: 0.65rem; color: #64748b; text-transform: uppercase; font-weight: 700;">OB Distance</div>
+                                    <div style="font-size: 1.15rem; font-weight: 800; color: #ef4444; font-family: monospace;">{top_sell['ob_dist']:.2f}%</div>
+                                </div>
+                                <div style="flex: 1;">
+                                    <div style="font-size: 0.65rem; color: #64748b; text-transform: uppercase; font-weight: 700;">OB Type</div>
+                                    <div style="font-size: 1.15rem; font-weight: 800; color: #fbbf24; font-family: monospace;">{top_sell['ob_type']}</div>
+                                </div>
+                            </div>
+                            
+                            <div style="font-size: 0.82rem; color: #e2e8f0; line-height: 1.5; font-weight: 500;">
+                                <b>Trading Bias:</b> {top_sell['symbol']} has rallied up to institutional resistance ({top_sell['ob_type']}). Perfect scenario to <b>Buy Put Option (PE)</b> or sell/short for high-probability correction.
+                            </div>
+                        </div>
+                        ''', unsafe_allow_html=True)
+                    else:
+                        st.markdown('''
+                        <div style="background: rgba(255,255,255,0.02); border: 1px dashed rgba(255,255,255,0.1); padding: 25px; border-radius: 12px; text-align: center; color: #64748b; height: 100%; display: flex; flex-direction: column; justify-content: center; align-items: center;">
+                            <span style="font-size: 2rem; margin-bottom: 10px;">🛡️</span>
+                            <div style="font-size: 0.9rem; font-weight: 700;">No PUT recommendation today</div>
+                        </div>
+                        ''', unsafe_allow_html=True)
     else:
         st.info("⚖️ No high-probability Institutional Order Block setups found in this scan. Try switching to 'All 350+ Stocks' or check back later.")
         st.markdown("<br>", unsafe_allow_html=True)

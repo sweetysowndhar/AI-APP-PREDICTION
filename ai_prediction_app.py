@@ -4121,6 +4121,9 @@ def page_explore():
                 stars_str = '★' * setup['stars'] + '☆' * (5 - setup['stars'])
                 row_bg = "rgba(255, 255, 255, 0.02)" if i % 2 == 0 else "transparent"
                 
+                ob_dist_str = f"{setup['ob_dist']:.2f}%" if setup['ob_dist'] < 999.0 else "N/A"
+                freshness_str = f"{setup['freshness']}%" if setup['age'] != "N/A" else "N/A"
+                
                 rows_html += f"""
                 <tr style="border-bottom: 1px solid rgba(255, 255, 255, 0.04); background: {row_bg}; font-size: 0.85rem;">
                     <td style="padding: 14px 16px; font-weight: 800;">{rank_str}</td>
@@ -4129,8 +4132,8 @@ def page_explore():
                     <td style="padding: 14px 16px;"><span style="font-family: monospace; font-weight: 700; color: #f1f5f9;">{curr}{setup['price']:,.2f}</span></td>
                     <td style="padding: 14px 16px; text-align: center;"><span style="font-weight: 900; color: {sig_color}; font-size: 1rem;">{setup['confidence']:.0%}</span></td>
                     <td style="padding: 14px 16px; text-align: center; color: #fbbf24; font-size: 0.9rem; letter-spacing: 1px;">{stars_str}</td>
-                    <td style="padding: 14px 16px; text-align: center;"><span style="font-family: monospace; font-weight: 700; color: #f3f4f6;">{setup['ob_dist']:.2f}%</span><br><span style="font-size: 0.65rem; color: #64748b;">({setup['ob_type']})</span></td>
-                    <td style="padding: 14px 16px; text-align: right;"><span style="color: #10b981; font-weight: 700;">{setup['freshness']}%</span><br><span style="font-size: 0.7rem; color: #94a3b8;">{setup['age']}</span></td>
+                    <td style="padding: 14px 16px; text-align: center;"><span style="font-family: monospace; font-weight: 700; color: #f3f4f6;">{ob_dist_str}</span><br><span style="font-size: 0.65rem; color: #64748b;">({setup['ob_type']})</span></td>
+                    <td style="padding: 14px 16px; text-align: right;"><span style="color: #10b981; font-weight: 700;">{freshness_str}</span><br><span style="font-size: 0.7rem; color: #94a3b8;">{setup['age']}</span></td>
                 </tr>
                 """
                 

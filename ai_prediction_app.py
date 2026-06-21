@@ -4002,40 +4002,41 @@ def scan_institutional_setups(scan_target):
             closest_ob = smc.get('closest_ob')
             closest_ob_dist = smc.get('closest_ob_dist_pct', 999.0)
             
-            if closest_ob and closest_ob_dist <= 2.5:
-                prices = df['Close'].dropna().astype(float).tolist()
-                volumes = df['Volume'].dropna().astype(float).tolist()
-                sym = ticker_to_sym.get(ticker, ticker.replace('.NS', ''))
+            prices = df['Close'].dropna().astype(float).tolist()
+            volumes = df['Volume'].dropna().astype(float).tolist()
+            sym = ticker_to_sym.get(ticker, ticker.replace('.NS', ''))
+            
+            if sym not in engine.models:
+                engine.train(sym, prices, volumes, news_sent=0.0)
                 
-                if sym not in engine.models:
-                    engine.train(sym, prices, volumes, news_sent=0.0)
-                    
-                res = engine.predict(sym, prices, volumes, news_sent=0.0, tv_sent=0.0, intraday=False, df=df)
+            res = engine.predict(sym, prices, volumes, news_sent=0.0, tv_sent=0.0, intraday=False, df=df)
+            
+            if res and 'today' in res:
+                pred_today = res['today']
+                setup_stars = pred_today.get('stars', 1)
+                confluence = pred_today.get('confidence', 0.0)
+                signal = pred_today.get('signal', 'HOLD')
                 
-                if res and 'today' in res:
-                    pred_today = res['today']
-                    setup_stars = pred_today.get('stars', 1)
-                    confluence = pred_today.get('confidence', 0.0)
-                    signal = pred_today.get('signal', 'HOLD')
+                if "BUY" in signal or "SELL" in signal:
+                    ob_zone = f"{closest_ob['bottom']:,.2f} - {closest_ob['top']:,.2f}" if closest_ob else "N/A"
+                    age_str = f"{closest_ob['age']} Days Old" if closest_ob else "N/A"
+                    freshness = max(0, 100 - closest_ob['age'] * 2) if closest_ob else 50
+                    ob_type_str = f"{closest_ob['type']} OB" if closest_ob else "No OB"
+                    ob_dist_val = closest_ob_dist if closest_ob else 999.0
                     
-                    if setup_stars >= 3 and ("BUY" in signal or "SELL" in signal):
-                        ob_zone = f"{closest_ob['bottom']:,.2f} - {closest_ob['top']:,.2f}"
-                        age_str = f"{closest_ob['age']} Days Old"
-                        freshness = max(0, 100 - closest_ob['age'] * 2)
-                        
-                        setups.append({
-                            'symbol': sym,
-                            'ticker': ticker,
-                            'signal': signal,
-                            'confidence': confluence,
-                            'stars': setup_stars,
-                            'ob_type': f"{closest_ob['type']} OB",
-                            'ob_zone': ob_zone,
-                            'ob_dist': closest_ob_dist,
-                            'age': age_str,
-                            'freshness': freshness,
-                            'price': float(df['Close'].iloc[-1])
-                        })
+                    setups.append({
+                        'symbol': sym,
+                        'ticker': ticker,
+                        'signal': signal,
+                        'confidence': confluence,
+                        'stars': setup_stars,
+                        'ob_type': ob_type_str,
+                        'ob_zone': ob_zone,
+                        'ob_dist': ob_dist_val,
+                        'age': age_str,
+                        'freshness': freshness,
+                        'price': float(df['Close'].iloc[-1])
+                    })
         except Exception:
             continue
             

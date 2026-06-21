@@ -3943,6 +3943,7 @@ def render_trade_proof():
 def scan_institutional_setups(scan_target):
     # Instantiate temporary engine inside cached function to avoid hashing session state
     engine = AIEngine()
+    engine.load_model()
     
     # 1. Define list of symbols to scan
     nifty_50 = [

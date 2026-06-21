@@ -2817,6 +2817,13 @@ class AIEngine:
         return "REGULAR SESSION"
 
 
+@st.cache_resource
+def get_cached_engine():
+    engine = AIEngine()
+    engine.load_model()
+    return engine
+
+
 
 
 
@@ -3564,7 +3571,7 @@ def main():
 
     # Self-healing engine initialization: Re-instantiate if stale or missing methods
     if 'engine_v2' not in st.session_state or not hasattr(st.session_state.engine_v2, 'predict'):
-        st.session_state.engine_v2 = AIEngine()
+        st.session_state.engine_v2 = get_cached_engine()
 
     # ── Ticker Bar & Live Refresh ─────────────────────────────────────
     ticker_syms = ['^NSEI', '^BSESN', '^NSEBANK', '^GSPC', '^IXIC']
@@ -3950,9 +3957,8 @@ def render_trade_proof():
 # ── PAGE: Explore (Groww-style) ───────────────────────────────────────────
 @st.cache_data(ttl=1800)
 def scan_institutional_setups(scan_target):
-    # Instantiate temporary engine inside cached function to avoid hashing session state
-    engine = AIEngine()
-    engine.load_model()
+    # Retrieve cached engine to avoid reloading heavy model file
+    engine = get_cached_engine()
     
     # 1. Define list of symbols to scan
     nifty_50 = [
@@ -5420,7 +5426,7 @@ def page_mtf_scanner():
         prog.progress(0.5, text="Analyzing SMC Structure & Sweeps...")
         
         rows = []
-        engine = AIEngine()
+        engine = get_cached_engine()
         
         for i, sym in enumerate(symbols):
             prog.progress(0.5 + (0.5 * (i / len(symbols))), text=f"Analyzing {sym}...")
@@ -5655,7 +5661,7 @@ def page_options_opportunities():
         
         # Pre-fetch MTF data for speed
         fetch_bulk_mtf_data(fo_symbols)
-        ai = AIEngine()
+        ai = get_cached_engine()
         
         for i, sym in enumerate(fo_symbols):
             prog.progress((i + 1) / len(fo_symbols), text=f"Analyzing {sym}...")

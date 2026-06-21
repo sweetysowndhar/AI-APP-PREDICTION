@@ -3989,14 +3989,17 @@ def scan_institutional_setups(scan_target):
         ticker_to_sym[mapped] = sym
         
     tickers_to_download = list(set(tickers_to_download))
+    st.session_state.failed_tickers = []
     
     # 2. Batch download using yfinance
     try:
         batch_df = yf.download(tickers_to_download, period='150d', interval='1d', group_by='ticker', progress=False)
     except Exception:
+        st.session_state.failed_tickers = list(tickers_to_download)
         return []
         
     if batch_df is None or batch_df.empty:
+        st.session_state.failed_tickers = list(tickers_to_download)
         return []
         
     import concurrent.futures
@@ -4005,11 +4008,15 @@ def scan_institutional_setups(scan_target):
     def process_single_ticker(ticker):
         try:
             if is_multi:
+                if ticker not in batch_df.columns.levels[0] if hasattr(batch_df.columns, 'levels') else ticker not in batch_df:
+                    st.session_state.failed_tickers.append(ticker)
+                    return None
                 df = batch_df[ticker].dropna(subset=['Close'])
             else:
                 df = batch_df.dropna(subset=['Close'])
                 
             if df is None or len(df) < 30:
+                st.session_state.failed_tickers.append(ticker)
                 return None
                 
             df = df.copy()
@@ -4087,6 +4094,10 @@ def page_explore():
         tab_scanner, tab_options = st.tabs(["🔍 Live AI Setup Scanner", "🎯 Option Trade Alerts (CALL / PUT)"])
         
         with tab_scanner:
+            if st.session_state.get('failed_tickers'):
+                failed_clean = sorted(list(set([t.replace('.NS', '') for t in st.session_state.failed_tickers])))
+                if failed_clean:
+                    st.warning(f"⚠️ **Data Alert:** The following symbols failed to download price data (possibly delisted or offline): {', '.join(failed_clean)}")
             rows_html = ""
             for i, setup in enumerate(setups[:10]):
                 rank = i + 1

@@ -4029,9 +4029,28 @@ def scan_institutional_setups(scan_target):
             df.columns = [c.capitalize() for c in df.columns]
             
             smc = engine.detect_smc_features(df)
-            closest_ob = smc.get('closest_ob')
-            closest_ob_dist = smc.get('closest_ob_dist_pct', 999.0)
-            
+
+            # ── FIX: detect_smc_features does NOT return 'closest_ob' directly.
+            # Find the closest active OB (bull or bear) by distance to current price.
+            current_price = float(df['Close'].iloc[-1])
+            all_active_obs = smc.get('active_bullish_ob', []) + smc.get('active_bearish_ob', [])
+            closest_ob = None
+            closest_ob_dist = 999.0
+            if all_active_obs:
+                best_dist = float('inf')
+                for ob in all_active_obs:
+                    if current_price < ob['bottom']:
+                        dist = ob['bottom'] - current_price
+                    elif current_price > ob['top']:
+                        dist = current_price - ob['top']
+                    else:
+                        dist = 0.0  # price is inside OB
+                    if dist < best_dist:
+                        best_dist = dist
+                        closest_ob = ob
+                if closest_ob is not None:
+                    closest_ob_dist = (best_dist / current_price) * 100.0
+
             prices = df['Close'].dropna().astype(float).tolist()
             volumes = df['Volume'].dropna().astype(float).tolist()
             sym = ticker_to_sym.get(ticker, ticker.replace('.NS', ''))
@@ -4050,8 +4069,8 @@ def scan_institutional_setups(scan_target):
                 
                 if "BUY" in signal or "SELL" in signal:
                     ob_zone = f"{closest_ob['bottom']:,.2f} - {closest_ob['top']:,.2f}" if closest_ob else "N/A"
-                    age_str = f"{closest_ob['age']} Days Old" if closest_ob else "N/A"
-                    freshness = max(0, 100 - closest_ob['age'] * 2) if closest_ob else 50
+                    age_str = f"{closest_ob.get('age', 0)} Days Old" if closest_ob else "N/A"
+                    freshness = max(0, 100 - closest_ob.get('age', 0) * 2) if closest_ob else 0
                     ob_type_str = f"{closest_ob['type']} OB" if closest_ob else "No OB"
                     ob_dist_val = closest_ob_dist if closest_ob else 999.0
                     
@@ -4164,7 +4183,10 @@ def page_explore():
                 </table>
             </div>
             """
-            st.markdown(table_html, unsafe_allow_html=True)
+            # Strip blank lines to prevent Streamlit markdown from treating
+            # indented HTML lines (after blank lines) as code blocks
+            table_html_clean = '\n'.join(line for line in table_html.split('\n') if line.strip())
+            st.markdown(table_html_clean, unsafe_allow_html=True)
             
         with tab_options:
             top_buy = next((s for s in setups if "BUY" in s['signal']), None)
@@ -4185,7 +4207,6 @@ def page_explore():
                             </div>
                             <div style="font-size: 1.6rem; font-weight: 900; color: #ffffff; margin-top: 12px; margin-bottom: 4px;">{top_buy['symbol']}</div>
                             <div style="font-size: 0.8rem; color: #94a3b8; font-family: monospace; margin-bottom: 12px;">{top_buy['ticker']}</div>
-                            
                             <div style="display: flex; gap: 15px; margin-bottom: 15px; background: rgba(255,255,255,0.02); padding: 10px; border-radius: 8px;">
                                 <div style="flex: 1;">
                                     <div style="font-size: 0.65rem; color: #64748b; text-transform: uppercase; font-weight: 700;">Stock Price</div>
@@ -4200,7 +4221,6 @@ def page_explore():
                                     <div style="font-size: 1.15rem; font-weight: 800; color: #fbbf24; font-family: monospace;">{top_buy['ob_type']}</div>
                                 </div>
                             </div>
-                            
                             <div style="font-size: 0.82rem; color: #e2e8f0; line-height: 1.5; font-weight: 500;">
                                 <b>Trading Bias:</b> {top_buy['symbol']} has pulled back to institutional support ({top_buy['ob_type']}). Perfect scenario to <b>Buy Call Option (CE)</b> or buy cash shares for high-probability recovery.
                             </div>
@@ -4225,7 +4245,6 @@ def page_explore():
                             </div>
                             <div style="font-size: 1.6rem; font-weight: 900; color: #ffffff; margin-top: 12px; margin-bottom: 4px;">{top_sell['symbol']}</div>
                             <div style="font-size: 0.8rem; color: #94a3b8; font-family: monospace; margin-bottom: 12px;">{top_sell['ticker']}</div>
-                            
                             <div style="display: flex; gap: 15px; margin-bottom: 15px; background: rgba(255,255,255,0.02); padding: 10px; border-radius: 8px;">
                                 <div style="flex: 1;">
                                     <div style="font-size: 0.65rem; color: #64748b; text-transform: uppercase; font-weight: 700;">Stock Price</div>
@@ -4240,7 +4259,6 @@ def page_explore():
                                     <div style="font-size: 1.15rem; font-weight: 800; color: #fbbf24; font-family: monospace;">{top_sell['ob_type']}</div>
                                 </div>
                             </div>
-                            
                             <div style="font-size: 0.82rem; color: #e2e8f0; line-height: 1.5; font-weight: 500;">
                                 <b>Trading Bias:</b> {top_sell['symbol']} has rallied up to institutional resistance ({top_sell['ob_type']}). Perfect scenario to <b>Buy Put Option (PE)</b> or sell/short for high-probability correction.
                             </div>

@@ -6,6 +6,7 @@ __pycache__/
 bore.log
 cloudflare.log
 cloudflare_final.log
+cloudflare_final.log
 localtunnel.log
 pinggy.log
 streamlit.log
@@ -25,3 +26,5 @@ sowndhar/
 .vscode/
 .idea/
 .DS_Store
+# Never push secrets/API keys to GitHub
+.streamlit/secrets.toml

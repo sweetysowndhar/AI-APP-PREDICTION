@@ -1,5 +1,16 @@
 [
     {
+        "symbol": "WIPRO",
+        "signal": "BUY",
+        "confidence": 0.436,
+        "price": 180.17,
+        "sl": 175.7161513812725,
+        "target": 189.07769723745494,
+        "timestamp": "2026-06-22 13:15:30",
+        "catalyst": "Stock: Positive Corporate Action: \"Wipro acquires additional 20% stake in Aggne Global for $2.1 million; stock...\" | Sector: Neutral (+0%)",
+        "correct": null
+    },
+    {
         "symbol": "TATASILVER",
         "signal": "NO TRADE (Low Confidence)",
         "confidence": 0.3587,

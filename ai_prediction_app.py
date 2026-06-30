@@ -2,6 +2,7 @@ import streamlit as st
 import numpy as np
 import pandas as pd
 from datetime import datetime, timedelta, time
+from intraday_execution import IntradayExecutionEngine
 from sklearn.linear_model import LogisticRegression
 from sklearn.ensemble import RandomForestClassifier, GradientBoostingClassifier
 from sklearn.preprocessing import StandardScaler
@@ -2284,6 +2285,21 @@ class AIEngine:
             final_score *= mtf_alignment
             final_score = min(max(final_score, 0.0), 1.0)
             
+            # Evaluate using IntradayExecutionEngine if in Intraday mode
+            intraday_data = None
+            if intraday and df is not None:
+                has_sweep = (ml_side == 1 and liquidity_sweep['bullish']) or (ml_side == -1 and liquidity_sweep['bearish'])
+                ob_prox_val = (ob_score >= 0.5)
+                sync_ok = is_mtf_sync if 'is_mtf_sync' in locals() else False
+                intraday_data = IntradayExecutionEngine.evaluate_entry(
+                    df=df,
+                    signal_direction="BUY" if ml_side == 1 else "SELL",
+                    mtf_sync=sync_ok,
+                    liquidity_sweep=has_sweep,
+                    ob_prox=ob_prox_val,
+                    news_score=news_val
+                )
+
             # Guardrails
             if raw_prob < 0.50: final_score = min(final_score, 0.39)
             elif baseline_score < 0.40: final_score = min(final_score, 0.39)
@@ -2292,17 +2308,41 @@ class AIEngine:
             # Signal Selection
             if vol_mult <= 0.1: sig = "NO TRADE (Low Volatility)"
             elif is_conflict: sig = "NO TRADE (Trend Conflict)"
+            elif intraday_data is not None:
+                # Phase 6 — Tiered Institutional Signal (replaces hard 90% block)
+                score = intraday_data['score']
+                tier  = intraday_data.get('tier_label', 'Ignore')
+                if not intraday_data['vwap_ok']:
+                    sig = "HOLD (Below VWAP)" if ml_side == 1 else "HOLD (Above VWAP)"
+                elif not intraday_data['rvol_ok']:
+                    sig = f"HOLD (Low RVOL: {intraday_data['rvol']}x)"
+                elif score >= 95:      # A+ Institutional
+                    sig = "STRONG BUY" if ml_side == 1 else "STRONG SELL"
+                elif score >= 90:      # Strong Buy tier
+                    sig = "STRONG BUY" if ml_side == 1 else "STRONG SELL"
+                elif score >= 80:      # Buy tier
+                    sig = "BUY" if ml_side == 1 else "SELL"
+                elif score >= 70:      # Watchlist
+                    sig = "HOLD (Watchlist)"
+                else:                  # Ignore
+                    sig = "NO TRADE (Low Inst Score)"
+                final_score = score / 100.0
             elif final_score >= 0.65: sig = "STRONG BUY" if ml_side == 1 else "STRONG SELL"
             elif final_score >= 0.40: sig = "BUY" if ml_side == 1 else "SELL"
             else: sig = "NO TRADE (Low Confidence)"
             
-            stars = 5 if final_score >= 0.85 else 4 if final_score >= 0.70 else 3 if final_score >= 0.50 else 2 if final_score >= 0.30 else 1
+            if intraday_data is not None:
+                score = intraday_data['score']
+                stars = 5 if score >= 95 else 4 if score >= 80 else 3 if score >= 70 else 2 if score >= 50 else 1
+            else:
+                stars = 5 if final_score >= 0.85 else 4 if final_score >= 0.70 else 3 if final_score >= 0.50 else 2 if final_score >= 0.30 else 1
             
             results[label] = {
                 'signal': sig, 'confidence': round(final_score, 4), 'stars': stars,
                 'ml_prob': round(raw_prob, 4), 'tech_score': main_status['score'],
                 'pattern_score': round((fib_score + ob_score) / 2.0, 4),
                 'is_trending': is_trending,
+                'intraday_execution': intraday_data,
                 'scores': {
                     'ml_score': round(ml_score, 4),
                     'tech_score': round(tech_score, 4),
@@ -3962,7 +4002,7 @@ def render_trade_proof():
 
 # ── PAGE: Explore (Groww-style) ───────────────────────────────────────────
 @st.cache_data(ttl=1800)
-def scan_institutional_setups(scan_target):
+def scan_institutional_setups(scan_target, scan_timeframe="Daily (1d)"):
     # Retrieve cached engine to avoid reloading heavy model file
     engine = get_cached_engine()
     
@@ -3998,8 +4038,18 @@ def scan_institutional_setups(scan_target):
     st.session_state.failed_tickers = []
     
     # 2. Batch download using yfinance
+    if scan_timeframe == "1 Hour (1h)":
+        yf_interval = '1h'
+        yf_period = '60d'
+    elif scan_timeframe == "15 Minute (15m)":
+        yf_interval = '15m'
+        yf_period = '60d'
+    else:
+        yf_interval = '1d'
+        yf_period = '150d'
+        
     try:
-        batch_df = yf.download(tickers_to_download, period='150d', interval='1d', group_by='ticker', progress=False)
+        batch_df = yf.download(tickers_to_download, period=yf_period, interval=yf_interval, group_by='ticker', progress=False)
     except Exception:
         st.session_state.failed_tickers = list(tickers_to_download)
         return []
@@ -4059,7 +4109,8 @@ def scan_institutional_setups(scan_target):
                 # If no models are loaded globally, we can't run predictions
                 return None
                 
-            res = engine.predict(sym, prices, volumes, news_sent=0.0, tv_sent=0.0, intraday=False, df=df)
+            is_intra = (yf_interval != '1d')
+            res = engine.predict(sym, prices, volumes, news_sent=0.0, tv_sent=0.0, intraday=is_intra, df=df)
             
             if res and 'today' in res:
                 pred_today = res['today']
@@ -4073,7 +4124,23 @@ def scan_institutional_setups(scan_target):
                     freshness = max(0, 100 - closest_ob.get('age', 0) * 2) if closest_ob else 0
                     ob_type_str = f"{closest_ob['type']} OB" if closest_ob else "No OB"
                     ob_dist_val = closest_ob_dist if closest_ob else 999.0
-                    
+
+                    # ── Phase 6: Institutional Execution Score ──────────────
+                    # Use daily df; SMC fields from smc dict
+                    mtf_sync = bool(res.get('mtf_sync', False))
+                    liq_sweep = bool(smc.get('liquidity_sweep_detected', False))
+                    ob_close  = closest_ob_dist < 3.0 if closest_ob else False
+                    ie = IntradayExecutionEngine.evaluate_entry(
+                        df=df,
+                        signal_direction="BUY" if "BUY" in signal else "SELL",
+                        mtf_sync=mtf_sync,
+                        liquidity_sweep=liq_sweep,
+                        ob_prox=ob_close,
+                        news_score=0.0,
+                        market_cap="mid",
+                        orb_window=30,
+                    )
+
                     return {
                         'symbol': sym,
                         'ticker': ticker,
@@ -4085,7 +4152,11 @@ def scan_institutional_setups(scan_target):
                         'ob_dist': ob_dist_val,
                         'age': age_str,
                         'freshness': freshness,
-                        'price': float(df['Close'].iloc[-1])
+                        'price': float(df['Close'].iloc[-1]),
+                        'inst_score':      ie['score'],
+                        'inst_tier_label': ie['tier_label'],
+                        'inst_tier_color': ie['tier_color'],
+                        'inst_tier_emoji': ie['tier_emoji'],
                     }
         except Exception:
             pass
@@ -4101,7 +4172,7 @@ def page_explore():
     # Today's Opportunities Scanner
     st.markdown('<div class="section-head">🏛️ Today\'s Institutional Opportunities (Live AI Scan)</div>', unsafe_allow_html=True)
     
-    c1, c2 = st.columns([1, 3])
+    c1, c2, c3 = st.columns([1, 1, 2])
     with c1:
         scan_target = st.selectbox(
             "Select Scan Coverage", 
@@ -4110,10 +4181,17 @@ def page_explore():
             key="home_scan_target"
         )
     with c2:
+        scan_timeframe = st.selectbox(
+            "Timeframe",
+            ["Daily (1d)", "1 Hour (1h)", "15 Minute (15m)"],
+            index=0,
+            key="home_scan_tf"
+        )
+    with c3:
         st.markdown('<div style="font-size:0.8rem; color:#64748b; margin-top:28px;">Scans stocks in parallel for active Order Blocks, FVG imbalances, and AI confluence.</div>', unsafe_allow_html=True)
         
-    with st.spinner("🔍 Scanning market for high-probability setups..."):
-        setups = scan_institutional_setups(scan_target)
+    with st.spinner(f"🔍 Scanning market for high-probability setups ({scan_timeframe})..."):
+        setups = scan_institutional_setups(scan_target, scan_timeframe)
         
     if setups:
         tab_scanner, tab_options = st.tabs(["🔍 Live AI Setup Scanner", "🎯 Option Trade Alerts (CALL / PUT)"])
@@ -4149,6 +4227,19 @@ def page_explore():
                 ob_dist_str = f"{setup['ob_dist']:.2f}%" if setup['ob_dist'] < 999.0 else "N/A"
                 freshness_str = f"{setup['freshness']}%" if setup['age'] != "N/A" else "N/A"
                 
+                # Institutional Score badge
+                inst_score       = setup.get('inst_score', 0)
+                inst_tier_label  = setup.get('inst_tier_label', 'N/A')
+                inst_tier_color  = setup.get('inst_tier_color', '#64748b')
+                inst_tier_emoji  = setup.get('inst_tier_emoji', '')
+                inst_badge = (
+                    f'<span style="background:{inst_tier_color}22; color:{inst_tier_color}; '
+                    f'padding: 3px 8px; border-radius: 6px; font-size: 0.72rem; font-weight: 800; '
+                    f'display: inline-block; border: 1px solid {inst_tier_color}55;">'
+                    f'{inst_tier_emoji} {inst_tier_label}</span><br>'
+                    f'<span style="font-size:0.68rem; color:#94a3b8; font-family:monospace;">{inst_score}% score</span>'
+                )
+
                 rows_html += f"""
                 <tr style="border-bottom: 1px solid rgba(255, 255, 255, 0.04); background: {row_bg}; font-size: 0.85rem;">
                     <td style="padding: 14px 16px; font-weight: 800;">{rank_str}</td>
@@ -4157,6 +4248,7 @@ def page_explore():
                     <td style="padding: 14px 16px;"><span style="font-family: monospace; font-weight: 700; color: #f1f5f9;">{curr}{setup['price']:,.2f}</span></td>
                     <td style="padding: 14px 16px; text-align: center;"><span style="font-weight: 900; color: {sig_color}; font-size: 1rem;">{setup['confidence']:.0%}</span></td>
                     <td style="padding: 14px 16px; text-align: center; color: #fbbf24; font-size: 0.9rem; letter-spacing: 1px;">{stars_str}</td>
+                    <td style="padding: 14px 16px; text-align: center;">{inst_badge}</td>
                     <td style="padding: 14px 16px; text-align: center;"><span style="font-family: monospace; font-weight: 700; color: #f3f4f6;">{ob_dist_str}</span><br><span style="font-size: 0.65rem; color: #64748b;">({setup['ob_type']})</span></td>
                     <td style="padding: 14px 16px; text-align: right;"><span style="color: #10b981; font-weight: 700;">{freshness_str}</span><br><span style="font-size: 0.7rem; color: #94a3b8;">{setup['age']}</span></td>
                 </tr>
@@ -4173,6 +4265,7 @@ def page_explore():
                             <th style="padding: 12px 16px; font-weight: 800;">Price</th>
                             <th style="padding: 12px 16px; font-weight: 800; text-align: center;">Confluence</th>
                             <th style="padding: 12px 16px; font-weight: 800; text-align: center;">Stars</th>
+                            <th style="padding: 12px 16px; font-weight: 800; text-align: center;">🏛️ Inst. Score</th>
                             <th style="padding: 12px 16px; font-weight: 800; text-align: center;">Distance to OB</th>
                             <th style="padding: 12px 16px; font-weight: 800; text-align: right;">Freshness</th>
                         </tr>
@@ -4836,31 +4929,53 @@ def page_prediction():
 </div>''', unsafe_allow_html=True)
 
         # 3. AI FORECAST DASHBOARD (Cleanly Aligned 3-Day Projection)
+        # 3. AI FORECAST DASHBOARD (Cleanly Aligned 3-Day Projection)
+        if is_intra and pred["today"].get("intraday_execution"):
+            ie = pred["today"]["intraday_execution"]
+            st.markdown(f'''
+<div style="background: rgba(17, 24, 39, 0.45); border: 1px solid rgba(255,255,255,0.05); padding: 18px 24px; border-radius: 14px; margin-bottom: 20px;">
+  <div style="font-size:0.75rem; color:#94a3b8; text-transform:uppercase; font-weight:800; letter-spacing:1px; margin-bottom: 8px;">🏛️ Institutional Intraday Execution Confirmation (Phase 6)</div>
+  <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 20px;">
+    <div><span style="color:#94a3b8; font-size:0.75rem;">VWAP Status</span><br>
+         <span style="color:{'#10b981' if ie['vwap_ok'] else '#ef4444'}; font-weight:800;">{'Price > VWAP' if ie['vwap_ok'] else 'Price < VWAP'} (₹{ie['current_vwap']})</span></div>
+    <div><span style="color:#94a3b8; font-size:0.75rem;">ORB Range</span><br>
+         <span style="color:{'#10b981' if ie['orb_ok'] else '#94a3b8'}; font-weight:800;">{'Breakout ✅' if ie['orb_ok'] else 'No Breakout'}</span></div>
+    <div><span style="color:#94a3b8; font-size:0.75rem;">Relative Volume (RVOL)</span><br>
+         <span style="color:{'#10b981' if ie['rvol_ok'] else '#94a3b8'}; font-weight:800;">{ie['rvol']}x</span></div>
+    <div><span style="color:#94a3b8; font-size:0.75rem;">Time Priority Zone</span><br>
+         <span style="color:{'#fbbf24' if ie['time_zone']=='High Priority' else '#94a3b8'}; font-weight:800;">{ie['time_zone']}</span></div>
+  </div>
+  <div style="margin-top: 12px; font-size: 0.85rem; color: #cbd5e1;">
+    <b>Institutional Entry Score:</b> <span style="font-size: 1.1rem; font-weight: 900; color: {'#10b981' if ie['score'] >= 90 else '#fbbf24'};">{ie['score']}%</span>
+  </div>
+</div>''', unsafe_allow_html=True)
+
         st.markdown('<div class="section-head">🎯 AI Signal Forecast (3-Day Price Projection)</div>', unsafe_allow_html=True)
         tc1, tc2, tc3 = st.columns(3)
-        sig_cls = {
-            'STRONG BUY': 'signal-buy', 'BUY': 'signal-buy', 
-            'STRONG SELL': 'signal-sell', 'SELL': 'signal-sell', 
-            'HOLD': 'signal-hold', 'HOLD (Low Confidence)': 'signal-hold',
-            'HOLD (Uncertain)': 'signal-hold', 'HOLD (Ranging Market)': 'signal-hold'
-        }
-        sig_emoji = {
-            'STRONG BUY': '🚀 STRONG BUY', 'BUY': '🚀 BUY', 
-            'STRONG SELL': '💥 STRONG SELL', 'SELL': '💥 SELL', 
-            'HOLD': '⚖️ HOLD', 'HOLD (Low Confidence)': '⚖️ HOLD',
-            'HOLD (Uncertain)': '⚖️ HOLD (U)', 'HOLD (Ranging Market)': '⚖️ HOLD (R)'
-        }
+        
+        def get_signal_class(s):
+            if "BUY" in s: return "signal-buy"
+            if "SELL" in s: return "signal-sell"
+            return "signal-hold"
+            
+        def get_signal_emoji(s):
+            if "STRONG BUY" in s: return "🚀 STRONG BUY"
+            if "BUY" in s: return "🚀 BUY"
+            if "STRONG SELL" in s: return "💥 STRONG SELL"
+            if "SELL" in s: return "💥 SELL"
+            return f"⚖️ {s}"
+
         l1, l2, l3 = ("15 MIN", "30 MIN", "1 HOUR") if is_intra else ("TODAY", "TOMORROW", "DAY AFTER")
         
         with tc1: 
             s1 = pred["today"]["signal"]
-            st.markdown(f'<div class="{sig_cls.get(s1, "signal-hold")}">{l1}<br><span style="font-size:1.5rem;">{sig_emoji.get(s1, "⚖️ HOLD")}</span><p style="font-size:0.75rem">Conf: {pred["today"]["confidence"]:.1%}</p></div>', unsafe_allow_html=True)
+            st.markdown(f'<div class="{get_signal_class(s1)}">{l1}<br><span style="font-size:1.5rem;">{get_signal_emoji(s1)}</span><p style="font-size:0.75rem">Conf: {pred["today"]["confidence"]:.1%}</p></div>', unsafe_allow_html=True)
         with tc2: 
             s2 = pred["tomorrow"]["signal"]
-            st.markdown(f'<div class="{sig_cls.get(s2, "signal-hold")}">{l2}<br><span style="font-size:1.5rem;">{sig_emoji.get(s2, "⚖️ HOLD")}</span><p style="font-size:0.75rem">Conf: {pred["tomorrow"]["confidence"]:.1%}</p></div>', unsafe_allow_html=True)
+            st.markdown(f'<div class="{get_signal_class(s2)}">{l2}<br><span style="font-size:1.5rem;">{get_signal_emoji(s2)}</span><p style="font-size:0.75rem">Conf: {pred["tomorrow"]["confidence"]:.1%}</p></div>', unsafe_allow_html=True)
         with tc3: 
             s3 = pred["next_3_days"]["signal"]
-            st.markdown(f'<div class="{sig_cls.get(s3, "signal-hold")}">{l3}<br><span style="font-size:1.5rem;">{sig_emoji.get(s3, "⚖️ HOLD")}</span><p style="font-size:0.75rem">Conf: {pred["next_3_days"]["confidence"]:.1%}</p></div>', unsafe_allow_html=True)
+            st.markdown(f'<div class="{get_signal_class(s3)}">{l3}<br><span style="font-size:1.5rem;">{get_signal_emoji(s3)}</span><p style="font-size:0.75rem">Conf: {pred["next_3_days"]["confidence"]:.1%}</p></div>', unsafe_allow_html=True)
 
         # Confidence breakdown metrics expander
         scores = pred["today"].get("scores")
@@ -4899,16 +5014,113 @@ def page_prediction():
                 with col_b7:
                     st.metric(label="⚡ FVG Imbal (5%)", value=f"{c_fvg:.0%}", delta=f"+{c_fvg*w_fvg:.1%}")
 
-        # --- 3.5. INSTITUTIONAL ORDER BLOCK & SMC SCANNER ---
-        # Extract SMC info from pred['today']
+        # --- 3.5. INSTITUTIONAL ORDER BLOCK & SMC SCANNER (Unified with Scanner) ---
+        # Re-run the SAME detect_smc_features on the identical df so both
+        # scanner and prediction page show perfectly consistent OB zones.
+        smc_live = st.session_state.engine_v2.detect_smc_features(df)
+
+        # Merge with pred smc for confidence / mtf data
         smc_info = pred['today'].get('smc', {})
-        closest_ob = smc_info.get('closest_ob')
-        closest_fvg = smc_info.get('closest_fvg')
-        ob_dist = smc_info.get('closest_ob_dist_pct', 999.0)
-        fvg_dist = smc_info.get('closest_fvg_dist_pct', 999.0)
-        current_trend = smc_info.get('current_trend', 'Neutral')
+
+        # Pick the closest active OB from the LIVE detection (matches scanner logic exactly)
+        live_price = entry_price
+        all_live_obs = smc_live.get('active_bullish_ob', []) + smc_live.get('active_bearish_ob', [])
+        closest_ob = None
+        ob_dist    = 999.0
+        if all_live_obs:
+            best_dist = float('inf')
+            for ob in all_live_obs:
+                if not ob.get('active', True):
+                    continue
+                if live_price < ob['bottom']:
+                    dist = ob['bottom'] - live_price
+                elif live_price > ob['top']:
+                    dist = live_price - ob['top']
+                else:
+                    dist = 0.0
+                if dist < best_dist:
+                    best_dist = dist
+                    closest_ob = ob
+            if closest_ob is not None:
+                ob_dist = (best_dist / live_price) * 100.0 if live_price else 999.0
+
+        # FVG from live detection
+        all_live_fvgs = smc_live.get('active_bullish_fvg', []) + smc_live.get('active_bearish_fvg', [])
+        closest_fvg = None
+        fvg_dist    = 999.0
+        if all_live_fvgs:
+            best_fvg = float('inf')
+            for fvg in all_live_fvgs:
+                mid = (fvg['bottom'] + fvg['top']) / 2.0
+                dist = abs(live_price - mid)
+                if dist < best_fvg:
+                    best_fvg = dist
+                    closest_fvg = fvg
+            if closest_fvg is not None:
+                fvg_mid = (closest_fvg['bottom'] + closest_fvg['top']) / 2.0
+                fvg_dist = (abs(live_price - fvg_mid) / live_price * 100.0) if live_price else 999.0
+
+        current_trend      = smc_live.get('current_trend', 'Neutral')
         confluence_detected = smc_info.get('confluence_detected', False)
-        
+
+        # ── ORB Timeframe Selector ─────────────────────────────────────────────
+        st.markdown('<div class="section-head">🏛️ Institutional Order Block & SMC Scanner</div>', unsafe_allow_html=True)
+        orb_col1, orb_col2, orb_col3 = st.columns([1, 1, 2])
+        with orb_col1:
+            orb_window_sel = st.selectbox(
+                "⏱️ ORB Window",
+                options=[5, 15, 30],
+                index=2,
+                format_func=lambda x: f"{x} Min ORB (9:15–{9 if (15+x)<60 else 10}:{(15+x)%60:02d})",
+                key="pred_orb_window"
+            )
+        with orb_col2:
+            orb_mktcap_sel = st.selectbox(
+                "📊 Market Cap",
+                options=["large", "mid", "small"],
+                index=1,
+                format_func=lambda x: {"large": "Large Cap (RVOL>1.3)", "mid": "Mid Cap (RVOL>1.5)", "small": "Small Cap (RVOL>2.0)"}[x],
+                key="pred_mktcap"
+            )
+        with orb_col3:
+            st.markdown('<div style="height:8px"></div>', unsafe_allow_html=True)
+            # Re-evaluate execution engine with selected settings
+            ie2 = IntradayExecutionEngine.evaluate_entry(
+                df=df,
+                signal_direction="BUY" if "BUY" in today_sig else "SELL",
+                mtf_sync=bool(smc_info.get('mtf_sync', False)),
+                liquidity_sweep=bool(smc_live.get('liquidity_sweep_detected', False)),
+                ob_prox=(ob_dist < 3.0),
+                news_score=0.0,
+                market_cap=orb_mktcap_sel,
+                orb_window=orb_window_sel,
+            ) if is_intra else IntradayExecutionEngine._empty_result()
+            tier_color2 = ie2['tier_color']
+            st.markdown(
+                f'<div style="background:{tier_color2}18; border:1px solid {tier_color2}55; '
+                f'border-left:6px solid {tier_color2}; border-radius:10px; padding:10px 16px; margin-top:8px;">'
+                f'<span style="font-size:0.7rem; color:#94a3b8; text-transform:uppercase;">Institutional Score</span><br>'
+                f'<span style="font-size:1.4rem; font-weight:900; color:{tier_color2};">{ie2["tier_emoji"]} {ie2["tier_label"]}</span>'
+                f'<span style="font-size:0.8rem; color:#94a3b8; margin-left:10px;">{ie2["score"]}%</span>'
+                f'</div>',
+                unsafe_allow_html=True
+            )
+
+        # ── ONE Unified Signal Banner ──────────────────────────────────────────
+        unified_sig   = today_sig
+        unified_conf  = pred['today']['confidence']
+        u_color = '#10b981' if 'BUY' in unified_sig else '#ef4444' if 'SELL' in unified_sig else '#6366f1'
+        u_emoji = '🚀' if 'BUY' in unified_sig else '💥' if 'SELL' in unified_sig else '⚖️'
+        st.markdown(f'''
+<div style="background:{u_color}18; border:2px solid {u_color}55; border-radius:14px; padding:18px 24px; margin:12px 0; display:flex; align-items:center; gap:20px;">
+  <div style="font-size:3rem;">{u_emoji}</div>
+  <div>
+    <div style="font-size:0.7rem; color:#94a3b8; text-transform:uppercase; font-weight:800;">AI Unified Signal (OB + SMC + ML Combined)</div>
+    <div style="font-size:2rem; font-weight:950; color:{u_color};">{unified_sig}</div>
+    <div style="font-size:0.9rem; color:#cbd5e1;">Confidence: <b style="color:{u_color};">{unified_conf:.1%}</b> &nbsp;|&nbsp; Trend: <b>{current_trend}</b> &nbsp;|&nbsp; OB Distance: <b>{f"{ob_dist:.2f}%" if ob_dist!=999.0 else "N/A"}</b></div>
+  </div>
+</div>''', unsafe_allow_html=True)
+
         # Setup stars
         setup_stars = pred['today'].get('stars', 1)
         stars_str = '⭐' * setup_stars + '☆' * (5 - setup_stars)
@@ -4956,9 +5168,8 @@ def page_prediction():
 <div style="font-size: 0.85rem; color: #cbd5e1;">Smart Money Concepts and AI models are in perfect alignment. High-probability setup identified.</div>
 </div>'''
 
-        # Render scanner UI
+        # Render scanner UI (no extra section-head — already shown above)
         st.markdown(f'''<div class="premium-card" style="margin-bottom: 25px; color: #f8fafc;">
-<div style="font-size: 1.1rem; font-weight: 800; color: #fbbf24; text-transform: uppercase; letter-spacing: 1.5px; margin-bottom: 20px; display: flex; align-items: center; gap: 8px;">🏛️ Institutional Order Block & SMC Scanner</div>
 {badge_section_html}
 <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 25px;">
 <!-- Left Column -->

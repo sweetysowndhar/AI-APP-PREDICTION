@@ -4041,12 +4041,15 @@ def scan_institutional_setups(scan_target, scan_timeframe="Daily (1d)"):
     if scan_timeframe == "1 Hour (1h)":
         yf_interval = '1h'
         yf_period = '60d'
+        tf_badge = '1H'
     elif scan_timeframe == "15 Minute (15m)":
         yf_interval = '15m'
         yf_period = '60d'
+        tf_badge = '15m'
     else:
         yf_interval = '1d'
         yf_period = '150d'
+        tf_badge = '1D'
         
     try:
         batch_df = yf.download(tickers_to_download, period=yf_period, interval=yf_interval, group_by='ticker', progress=False)
@@ -4122,7 +4125,7 @@ def scan_institutional_setups(scan_target, scan_timeframe="Daily (1d)"):
                     ob_zone = f"{closest_ob['bottom']:,.2f} - {closest_ob['top']:,.2f}" if closest_ob else "N/A"
                     age_str = f"{closest_ob.get('age', 0)} Days Old" if closest_ob else "N/A"
                     freshness = max(0, 100 - closest_ob.get('age', 0) * 2) if closest_ob else 0
-                    ob_type_str = f"{closest_ob['type']} OB" if closest_ob else "No OB"
+                    ob_type_str = f"{closest_ob['type']} OB [{tf_badge}]" if closest_ob else "No OB"
                     ob_dist_val = closest_ob_dist if closest_ob else 999.0
 
                     # ── Phase 6: Institutional Execution Score ──────────────

@@ -772,9 +772,11 @@ def fetch_stock(raw_symbol, days=200, interval='1d', period=None):
     if symbol in STOCK_MAP:
         mapped = STOCK_MAP[symbol]
     else:
-        # Check fuzzy match
+        # Check fuzzy match using alphanumeric only
+        clean_sym = ''.join(e for e in symbol if e.isalnum())
         for k, v in STOCK_MAP.items():
-            if k in symbol or symbol.replace(' ','') == k:
+            clean_k = ''.join(e for e in k if e.isalnum())
+            if clean_k in clean_sym or clean_sym == clean_k:
                 mapped = v
                 break
         
@@ -2098,6 +2100,18 @@ class AIEngine:
         # Step 1 (v3): Volatility Filter Check
         vol_label, vol_mult = self.calculate_volatility_state(df)
         
+        # Calculate RSI and MA for the whole dataframe to avoid repeating
+        delta = df['Close'].diff()
+        gain = (delta.where(delta > 0, 0)).rolling(window=14).mean()
+        loss = (-delta.where(delta < 0, 0)).rolling(window=14).mean()
+        rs = gain / loss
+        rsi_series = 100 - (100 / (1 + rs))
+        current_rsi = rsi_series.iloc[-1]
+        if pd.isna(current_rsi): current_rsi = 50.0
+        
+        ma20 = df['Close'].rolling(window=20).mean().iloc[-1]
+        if pd.isna(ma20): ma20 = current_price
+        
         # Step 2 (v3): Prep Confidence Breakdown Flags
         v_curr = float(df['Volume'].iloc[-1])
         v_avg = df['Volume'].tail(20).mean()
@@ -2248,10 +2262,26 @@ class AIEngine:
             # ML Ensemble Probability
             ml_score = raw_prob
             
-            # 10-Factor Institutional Confluence Score
+            # RSI Score
+            rsi_score = 0.5
+            if ml_side == 1:
+                if 30 <= current_rsi <= 60: rsi_score = 1.0
+                elif current_rsi > 70: rsi_score = 0.0
+            else:
+                if 40 <= current_rsi <= 70: rsi_score = 1.0
+                elif current_rsi < 30: rsi_score = 0.0
+                
+            # MA Score
+            ma_score = 0.5
+            if ml_side == 1 and current_price > ma20: ma_score = 1.0
+            elif ml_side == -1 and current_price < ma20: ma_score = 1.0
+
+            # 12-Factor Institutional Confluence Score
             final_score = (
                 (ml_score * 0.30) +         # ML ensemble
-                (tech_score * 0.18) +        # Technical
+                (tech_score * 0.10) +        # Technical
+                (rsi_score * 0.04) +         # RSI
+                (ma_score * 0.04) +          # Moving Average
                 (volume_score * 0.12) +      # Volume
                 (structure_score * 0.10) +   # SMC Structure
                 (ob_score * 0.08) +          # Order Block
@@ -2263,10 +2293,12 @@ class AIEngine:
             )
             
             # Baseline conviction score (excluding SMC optional components OB, FVG, Fib)
-            # ML(30) + Tech(18) + Vol(12) + Struct(10) + News(7) + Sec(4) + Evt(4) = 85%
+            # ML(30) + Tech(10) + RSI(4) + MA(4) + Vol(12) + Struct(10) + News(7) + Sec(4) + Evt(4) = 85%
             baseline_score = (
                 (ml_score * 0.30) +
-                (tech_score * 0.18) +
+                (tech_score * 0.10) +
+                (rsi_score * 0.04) +
+                (ma_score * 0.04) +
                 (volume_score * 0.12) +
                 (structure_score * 0.10) +
                 (news_val * 0.07) +
@@ -2346,6 +2378,8 @@ class AIEngine:
                 'scores': {
                     'ml_score': round(ml_score, 4),
                     'tech_score': round(tech_score, 4),
+                    'rsi_score': round(rsi_score, 4),
+                    'ma_score': round(ma_score, 4),
                     'volume_score': round(volume_score, 4),
                     'structure_score': round(structure_score, 4),
                     'ob_score': round(ob_score, 4),
@@ -2353,7 +2387,9 @@ class AIEngine:
                     'fvg_score': round(fvg_score, 4),
                     'news_score': round(news_val, 4),
                     'sec_score': round(sec_val, 4),
-                    'evt_score': round(evt_val, 4)
+                    'evt_score': round(evt_val, 4),
+                    'current_rsi': round(current_rsi, 2),
+                    'ma20': round(ma20, 2)
                 },
                 'breakdown': {
                     'Trend Alignment': "PASS ✅" if not is_conflict else "FAIL ❌",
@@ -4992,6 +5028,8 @@ def page_prediction():
                 
                 c_ml = scores.get('ml_score', 0.0)
                 c_tech = scores.get('tech_score', 0.0)
+                c_rsi = scores.get('rsi_score', 0.0)
+                c_ma = scores.get('ma_score', 0.0)
                 c_vol = scores.get('volume_score', 0.0)
                 c_struct = scores.get('structure_score', 0.0)
                 c_ob = scores.get('ob_score', 0.0)
@@ -4999,23 +5037,26 @@ def page_prediction():
                 c_fvg = scores.get('fvg_score', 0.0)
                 
                 # Weights
-                w_ml, w_tech, w_vol, w_struct, w_ob, w_fib, w_fvg = 0.35, 0.20, 0.15, 0.10, 0.10, 0.05, 0.05
+                w_ml, w_tech, w_rsi, w_ma, w_vol, w_struct, w_ob, w_fib, w_fvg = 0.30, 0.10, 0.04, 0.04, 0.12, 0.10, 0.08, 0.04, 0.03
                 
-                col_b1, col_b2, col_b3, col_b4, col_b5, col_b6, col_b7 = st.columns(7)
+                col_b1, col_b2, col_b3, col_b4, col_b5, col_b6 = st.columns(6)
                 with col_b1:
-                    st.metric(label="🧠 ML Predict (35%)", value=f"{c_ml:.0%}", delta=f"+{c_ml*w_ml:.1%}")
+                    st.metric(label="🧠 ML Predict (30%)", value=f"{c_ml:.0%}", delta=f"+{c_ml*w_ml:.1%}")
+                    st.metric(label="📈 Tech Ind (10%)", value=f"{c_tech:.0%}", delta=f"+{c_tech*w_tech:.1%}")
                 with col_b2:
-                    st.metric(label="📈 Tech Ind (20%)", value=f"{c_tech:.0%}", delta=f"+{c_tech*w_tech:.1%}")
-                with col_b3:
-                    st.metric(label="📊 Volume (15%)", value=f"{c_vol:.0%}", delta=f"+{c_vol*w_vol:.1%}")
-                with col_b4:
+                    st.metric(label="📊 Volume (12%)", value=f"{c_vol:.0%}", delta=f"+{c_vol*w_vol:.1%}")
                     st.metric(label="⚖️ Structure (10%)", value=f"{c_struct:.0%}", delta=f"+{c_struct*w_struct:.1%}")
+                with col_b3:
+                    st.metric(label="🏛️ Order Block (8%)", value=f"{c_ob:.0%}", delta=f"+{c_ob*w_ob:.1%}")
+                    st.metric(label="🎯 Fibonacci (4%)", value=f"{c_fib:.0%}", delta=f"+{c_fib*w_fib:.1%}")
+                with col_b4:
+                    st.metric(label="⚡ FVG Imbal (3%)", value=f"{c_fvg:.0%}", delta=f"+{c_fvg*w_fvg:.1%}")
                 with col_b5:
-                    st.metric(label="🏛️ Order Block (10%)", value=f"{c_ob:.0%}", delta=f"+{c_ob*w_ob:.1%}")
+                    cur_rsi = scores.get('current_rsi', 50)
+                    st.metric(label=f"📉 RSI [{cur_rsi:.1f}] (4%)", value=f"{c_rsi:.0%}", delta=f"+{c_rsi*w_rsi:.1%}")
                 with col_b6:
-                    st.metric(label="🎯 Fibonacci (5%)", value=f"{c_fib:.0%}", delta=f"+{c_fib*w_fib:.1%}")
-                with col_b7:
-                    st.metric(label="⚡ FVG Imbal (5%)", value=f"{c_fvg:.0%}", delta=f"+{c_fvg*w_fvg:.1%}")
+                    cur_ma = scores.get('ma20', 0)
+                    st.metric(label=f"〽️ MA20 [{cur_ma:.0f}] (4%)", value=f"{c_ma:.0%}", delta=f"+{c_ma*w_ma:.1%}")
 
         # --- 3.5. INSTITUTIONAL ORDER BLOCK & SMC SCANNER (Unified with Scanner) ---
         # Re-run the SAME detect_smc_features on the identical df so both

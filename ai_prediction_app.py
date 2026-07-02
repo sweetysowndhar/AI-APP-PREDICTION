@@ -3763,7 +3763,7 @@ def main():
     with st.sidebar:
         st.markdown("### 🏛️ SRV Future Traders")
         page = st.radio("Navigate", [
-            "🏠 Explore", "🔮 AI Prediction", "📈 AI Backtester", "🔍 Stock Screener", "📰 Market News",
+            "🏠 Explore", "🔮 AI Prediction", "📈 AI Backtester", "🤖 Algo Engine", "🔍 Stock Screener", "📰 Market News",
             "🔥 MTF Scanner", "🏆 Top Movers"
         ], key="page")
         st.markdown("---")
@@ -3846,6 +3846,8 @@ def main():
         page_prediction()
     elif page == "📈 AI Backtester":
         page_backtester()
+    elif page == "🤖 Algo Engine":
+        page_algo_engine()
     elif page == "🔍 Stock Screener":
         page_screener()
     elif page == "📰 Market News":
@@ -4206,6 +4208,50 @@ def scan_institutional_setups(scan_target, scan_timeframe="Daily (1d)"):
         
     setups = [r for r in results if r is not None]
     return sorted(setups, key=lambda x: -x['confidence'])
+
+# ── PAGE: Algo Engine ───────────────────────────────────────────────────────
+def page_algo_engine():
+    st.markdown('<div class="section-head">🤖 Virtual Algo Execution Engine</div>', unsafe_allow_html=True)
+    st.write("This engine simulates real algorithmic trading by capturing 'STRONG BUY' or 'STRONG SELL' signals from the AI Prediction page and executing them with virtual money.")
+    
+    if 'algo_enabled' not in st.session_state:
+        st.session_state.algo_enabled = False
+    if 'virtual_trades' not in st.session_state:
+        st.session_state.virtual_trades = []
+        
+    col1, col2 = st.columns(2)
+    with col1:
+        algo_status = st.checkbox("🟢 Enable Automated Trading (Virtual)", value=st.session_state.algo_enabled)
+        if algo_status != st.session_state.algo_enabled:
+            st.session_state.algo_enabled = algo_status
+            st.rerun()
+    with col2:
+        if st.button("🗑️ Clear Trade History"):
+            st.session_state.virtual_trades = []
+            st.rerun()
+            
+    if st.session_state.algo_enabled:
+        st.success("🟢 Automated Trading is ACTIVE. The system will auto-execute virtual trades when high-confidence signals are detected.")
+    else:
+        st.warning("🔴 Automated Trading is PAUSED. High-confidence signals will be ignored.")
+        
+    trades = st.session_state.virtual_trades
+    
+    total_pnl = sum(t.get('PnL', 0) for t in trades)
+    win_rate = sum(1 for t in trades if t.get('PnL', 0) > 0) / len(trades) if trades else 0.0
+    
+    sc1, sc2, sc3 = st.columns(3)
+    sc1.metric("Total Virtual Trades", len(trades))
+    sc2.metric("Win Rate", f"{win_rate:.1%}")
+    sc3.metric("Net Virtual PnL", f"₹{total_pnl:,.2f}")
+    
+    st.markdown("### 📊 Trade Ledger")
+    if trades:
+        import pandas as pd
+        df_trades = pd.DataFrame(trades)
+        st.dataframe(df_trades, use_container_width=True)
+    else:
+        st.info("No trades executed yet. Go to 'AI Prediction', run a scan, and if a STRONG BUY/SELL is found, it will appear here.")
 
 def page_explore():
     # Today's Opportunities Scanner
@@ -4778,6 +4824,26 @@ def page_prediction():
                         'catalyst': st.session_state.get('pred_catalyst', 'Market Consensus'),
                         'correct': None
                     })
+                    
+                    # Algo Trade Execution Logic
+                    if st.session_state.get('algo_enabled', False):
+                        if "STRONG" in res['today']['signal']:
+                            direction = "BUY" if "BUY" in res['today']['signal'] else "SELL"
+                            trade = {
+                                'Symbol': symbol,
+                                'Direction': direction,
+                                'Entry Price': round(entry_price, 2),
+                                'Stop Loss': round(risk_params.get('sl', 0), 2),
+                                'Target': round(risk_params.get('target', 0), 2),
+                                'Confidence': f"{res['today']['confidence']:.1%}",
+                                'Status': 'ACTIVE',
+                                'Time': datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                                'PnL': 0.0
+                            }
+                            if 'virtual_trades' not in st.session_state:
+                                st.session_state.virtual_trades = []
+                            st.session_state.virtual_trades.append(trade)
+                            st.success(f"🤖 **Algo Engine Executed Virtual Trade!** {direction} {symbol} at ₹{entry_price:,.2f}")
                 else:
                     st.error("AI Training failed due to insufficient data quality.")
             else: st.warning("Not enough intraday data to train AI.")

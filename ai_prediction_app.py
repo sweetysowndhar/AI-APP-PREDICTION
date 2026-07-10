@@ -3838,6 +3838,11 @@ def main():
         st.caption("✅ TradingView Insights")
         st.caption("✅ Screener.in Fundamentals")
         st.caption("✅ BSE / NSE India")
+        
+        st.markdown("---")
+        if st.button("🔄 Clear Scan Cache & Refresh", use_container_width=True, help="Force reload scanner data to see latest signals and order block zones"):
+            st.cache_data.clear()
+            st.rerun()
 
     # ── Pages ─────────────────────────────────────────────────────────
     if page == "🏠 Explore":
@@ -4379,33 +4384,44 @@ def page_explore():
                     if buys:
                         for s in buys[:5]:
                             tb_curr = '₹' if (s['ticker'].endswith('.NS') or s['ticker'].endswith('.BO') or s['ticker'].startswith('^')) else '$'
-                            # Suggest strike price
                             strike_step = 10 if s['price'] < 1000 else 50 if s['price'] < 5000 else 100
                             target_strike = int(s['price'] + strike_step - (s['price'] % strike_step))
                             tf_val = s['ob_type'].split('[')[-1].replace(']', '') if '[' in s['ob_type'] else 'N/A'
                             ob_type_clean = s['ob_type'].split(' [')[0]
-                            
-                            st.markdown(f'''
-                            <div style="background: linear-gradient(135deg, rgba(16, 185, 129, 0.08) 0%, rgba(16, 185, 129, 0.02) 100%); border: 1px solid rgba(16, 185, 129, 0.25); border-left: 6px solid #10b981; padding: 18px; border-radius: 12px; margin-bottom: 15px; box-shadow: 0 4px 15px rgba(0,0,0,0.15);">
-                                <div style="display: flex; justify-content: space-between; align-items: center;">
-                                    <span style="font-size: 0.85rem; background: rgba(16, 185, 129, 0.2); color: #10b981; padding: 3px 10px; border-radius: 6px; font-weight: 800; text-transform: uppercase;">BUY {target_strike} CE</span>
-                                    <span style="font-size: 0.75rem; color: #94a3b8; font-weight: 600;">Conf: <b style="color: #10b981;">{s['confidence']:.0%}</b></span>
-                                </div>
-                                <div style="font-size: 1.4rem; font-weight: 900; color: #ffffff; margin-top: 10px; margin-bottom: 2px;">{s['symbol']}</div>
-                                <div style="font-size: 0.72rem; color: #64748b; font-family: monospace; margin-bottom: 12px;">{s['ticker']}</div>
-                                
-                                <div style="font-size: 0.82rem; color: #cbd5e1; line-height: 1.5; background: rgba(255,255,255,0.02); padding: 10px; border-radius: 8px; margin-bottom: 12px; border: 1px solid rgba(255,255,255,0.05);">
-                                    <div style="display:flex; justify-content:space-between; margin-bottom: 4px;"><span>🏛️ <b>Order Block Zone:</b></span> <span style="font-family: monospace; color: #fbbf24; font-weight: 800;">{s['ob_zone']}</span></div>
-                                    <div style="display:flex; justify-content:space-between; margin-bottom: 4px;"><span>⏱️ <b>Timeframe:</b></span> <span style="color: #6366f1; font-weight: 800; text-transform: uppercase;">{tf_val}</span></div>
-                                    <div style="display:flex; justify-content:space-between; margin-bottom: 4px;"><span>🎯 <b>OB Type:</b></span> <span style="color: #cbd5e1;">{ob_type_clean}</span></div>
-                                    <div style="display:flex; justify-content:space-between;"><span>📏 <b>Distance to Zone:</b></span> <span style="color: #10b981; font-weight: 800;">{s['ob_dist']:.2f}%</span></div>
-                                </div>
-                                
-                                <div style="font-size: 0.8rem; color: #cbd5e1; line-height: 1.4;">
-                                    <b>Trading Bias:</b> Price is reacting near the bullish order block on the <b>{tf_val}</b> timeframe. Good setup to buy CALL options at or near the support zone.
-                                </div>
-                            </div>
-                            ''', unsafe_allow_html=True)
+                            # Build clean OB zone range with currency symbol
+                            raw_zone = s['ob_zone']
+                            if raw_zone != 'N/A' and ' - ' in str(raw_zone):
+                                parts = str(raw_zone).replace(',','').split(' - ')
+                                try:
+                                    lo = float(parts[0]); hi = float(parts[1])
+                                    ob_zone_display = f"{tb_curr}{lo:,.2f} — {tb_curr}{hi:,.2f}"
+                                except Exception:
+                                    ob_zone_display = raw_zone
+                            else:
+                                ob_zone_display = raw_zone
+                            buy_card = (
+                                '<div style="background:linear-gradient(135deg,rgba(16,185,129,0.10) 0%,rgba(16,185,129,0.02) 100%);'
+                                'border:1px solid rgba(16,185,129,0.30);border-left:6px solid #10b981;'
+                                'padding:18px;border-radius:14px;margin-bottom:15px;box-shadow:0 4px 18px rgba(0,0,0,0.18);">'
+                                '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">'
+                                f'<span style="font-size:0.85rem;background:rgba(16,185,129,0.2);color:#10b981;padding:4px 12px;border-radius:8px;font-weight:800;">BUY {target_strike} CE</span>'
+                                f'<span style="font-size:0.78rem;color:#94a3b8;font-weight:600;">Conf: <b style="color:#10b981;font-size:1rem;">{s["confidence"]:.0%}</b></span>'
+                                '</div>'
+                                f'<div style="font-size:1.5rem;font-weight:900;color:#fff;margin-bottom:2px;">{s["symbol"]}</div>'
+                                f'<div style="font-size:0.72rem;color:#64748b;font-family:monospace;margin-bottom:12px;">{s["ticker"]}</div>'
+                                '<table style="width:100%;font-size:0.82rem;color:#cbd5e1;background:rgba(255,255,255,0.03);'
+                                'padding:10px;border-radius:10px;border-collapse:collapse;margin-bottom:12px;">'
+                                f'<tr><td style="padding:4px 6px;">🏛️ <b>OB Zone</b></td><td style="text-align:right;font-family:monospace;color:#fbbf24;font-weight:800;">{ob_zone_display}</td></tr>'
+                                f'<tr><td style="padding:4px 6px;">⏱️ <b>Timeframe</b></td><td style="text-align:right;color:#6366f1;font-weight:800;text-transform:uppercase;">{tf_val}</td></tr>'
+                                f'<tr><td style="padding:4px 6px;">🎯 <b>OB Type</b></td><td style="text-align:right;color:#e2e8f0;">{ob_type_clean}</td></tr>'
+                                f'<tr><td style="padding:4px 6px;">📏 <b>Distance</b></td><td style="text-align:right;color:#10b981;font-weight:800;">{s["ob_dist"]:.2f}%</td></tr>'
+                                f'<tr><td style="padding:4px 6px;">💰 <b>Current Price</b></td><td style="text-align:right;color:#fff;font-weight:800;">{tb_curr}{s["price"]:,.2f}</td></tr>'
+                                '</table>'
+                                f'<div style="font-size:0.8rem;color:#94a3b8;line-height:1.5;border-top:1px solid rgba(255,255,255,0.07);padding-top:10px;">'
+                                f'<b style="color:#10b981;">📈 Trading Bias:</b> Price near bullish OB on <b>{tf_val}</b>. Buy CALL option near support zone {ob_zone_display}.'
+                                '</div></div>'
+                            )
+                            st.markdown(buy_card, unsafe_allow_html=True)
                     else:
                         st.markdown('''
                         <div style="background: rgba(255,255,255,0.02); border: 1px dashed rgba(255,255,255,0.1); padding: 35px; border-radius: 12px; text-align: center; color: #64748b; display: flex; flex-direction: column; justify-content: center; align-items: center;">
@@ -4419,33 +4435,44 @@ def page_explore():
                     if sells:
                         for s in sells[:5]:
                             ts_curr = '₹' if (s['ticker'].endswith('.NS') or s['ticker'].endswith('.BO') or s['ticker'].startswith('^')) else '$'
-                            # Suggest strike price
                             strike_step = 10 if s['price'] < 1000 else 50 if s['price'] < 5000 else 100
                             target_strike = int(s['price'] - (s['price'] % strike_step))
                             tf_val = s['ob_type'].split('[')[-1].replace(']', '') if '[' in s['ob_type'] else 'N/A'
                             ob_type_clean = s['ob_type'].split(' [')[0]
-                            
-                            st.markdown(f'''
-                            <div style="background: linear-gradient(135deg, rgba(239, 68, 68, 0.08) 0%, rgba(239, 68, 68, 0.02) 100%); border: 1px solid rgba(239, 68, 68, 0.25); border-left: 6px solid #ef4444; padding: 18px; border-radius: 12px; margin-bottom: 15px; box-shadow: 0 4px 15px rgba(0,0,0,0.15);">
-                                <div style="display: flex; justify-content: space-between; align-items: center;">
-                                    <span style="font-size: 0.85rem; background: rgba(239, 68, 68, 0.2); color: #ef4444; padding: 3px 10px; border-radius: 6px; font-weight: 800; text-transform: uppercase;">BUY {target_strike} PE</span>
-                                    <span style="font-size: 0.75rem; color: #94a3b8; font-weight: 600;">Conf: <b style="color: #ef4444;">{s['confidence']:.0%}</b></span>
-                                </div>
-                                <div style="font-size: 1.4rem; font-weight: 900; color: #ffffff; margin-top: 10px; margin-bottom: 2px;">{s['symbol']}</div>
-                                <div style="font-size: 0.72rem; color: #64748b; font-family: monospace; margin-bottom: 12px;">{s['ticker']}</div>
-                                
-                                <div style="font-size: 0.82rem; color: #cbd5e1; line-height: 1.5; background: rgba(255,255,255,0.02); padding: 10px; border-radius: 8px; margin-bottom: 12px; border: 1px solid rgba(255,255,255,0.05);">
-                                    <div style="display:flex; justify-content:space-between; margin-bottom: 4px;"><span>🏛️ <b>Order Block Zone:</b></span> <span style="font-family: monospace; color: #fbbf24; font-weight: 800;">{s['ob_zone']}</span></div>
-                                    <div style="display:flex; justify-content:space-between; margin-bottom: 4px;"><span>⏱️ <b>Timeframe:</b></span> <span style="color: #6366f1; font-weight: 800; text-transform: uppercase;">{tf_val}</span></div>
-                                    <div style="display:flex; justify-content:space-between; margin-bottom: 4px;"><span>🎯 <b>OB Type:</b></span> <span style="color: #cbd5e1;">{ob_type_clean}</span></div>
-                                    <div style="display:flex; justify-content:space-between;"><span>📏 <b>Distance to Zone:</b></span> <span style="color: #ef4444; font-weight: 800;">{s['ob_dist']:.2f}%</span></div>
-                                </div>
-                                
-                                <div style="font-size: 0.8rem; color: #cbd5e1; line-height: 1.4;">
-                                    <b>Trading Bias:</b> Price is reacting near the bearish order block on the <b>{tf_val}</b> timeframe. Good setup to buy PUT options at or near the resistance zone.
-                                </div>
-                            </div>
-                            ''', unsafe_allow_html=True)
+                            # Build clean OB zone range with currency symbol
+                            raw_zone = s['ob_zone']
+                            if raw_zone != 'N/A' and ' - ' in str(raw_zone):
+                                parts = str(raw_zone).replace(',','').split(' - ')
+                                try:
+                                    lo = float(parts[0]); hi = float(parts[1])
+                                    ob_zone_display = f"{ts_curr}{lo:,.2f} — {ts_curr}{hi:,.2f}"
+                                except Exception:
+                                    ob_zone_display = raw_zone
+                            else:
+                                ob_zone_display = raw_zone
+                            sell_card = (
+                                '<div style="background:linear-gradient(135deg,rgba(239,68,68,0.10) 0%,rgba(239,68,68,0.02) 100%);'
+                                'border:1px solid rgba(239,68,68,0.30);border-left:6px solid #ef4444;'
+                                'padding:18px;border-radius:14px;margin-bottom:15px;box-shadow:0 4px 18px rgba(0,0,0,0.18);">'
+                                '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">'
+                                f'<span style="font-size:0.85rem;background:rgba(239,68,68,0.2);color:#ef4444;padding:4px 12px;border-radius:8px;font-weight:800;">BUY {target_strike} PE</span>'
+                                f'<span style="font-size:0.78rem;color:#94a3b8;font-weight:600;">Conf: <b style="color:#ef4444;font-size:1rem;">{s["confidence"]:.0%}</b></span>'
+                                '</div>'
+                                f'<div style="font-size:1.5rem;font-weight:900;color:#fff;margin-bottom:2px;">{s["symbol"]}</div>'
+                                f'<div style="font-size:0.72rem;color:#64748b;font-family:monospace;margin-bottom:12px;">{s["ticker"]}</div>'
+                                '<table style="width:100%;font-size:0.82rem;color:#cbd5e1;background:rgba(255,255,255,0.03);'
+                                'padding:10px;border-radius:10px;border-collapse:collapse;margin-bottom:12px;">'
+                                f'<tr><td style="padding:4px 6px;">🏛️ <b>OB Zone</b></td><td style="text-align:right;font-family:monospace;color:#fbbf24;font-weight:800;">{ob_zone_display}</td></tr>'
+                                f'<tr><td style="padding:4px 6px;">⏱️ <b>Timeframe</b></td><td style="text-align:right;color:#6366f1;font-weight:800;text-transform:uppercase;">{tf_val}</td></tr>'
+                                f'<tr><td style="padding:4px 6px;">🎯 <b>OB Type</b></td><td style="text-align:right;color:#e2e8f0;">{ob_type_clean}</td></tr>'
+                                f'<tr><td style="padding:4px 6px;">📏 <b>Distance</b></td><td style="text-align:right;color:#ef4444;font-weight:800;">{s["ob_dist"]:.2f}%</td></tr>'
+                                f'<tr><td style="padding:4px 6px;">💰 <b>Current Price</b></td><td style="text-align:right;color:#fff;font-weight:800;">{ts_curr}{s["price"]:,.2f}</td></tr>'
+                                '</table>'
+                                f'<div style="font-size:0.8rem;color:#94a3b8;line-height:1.5;border-top:1px solid rgba(255,255,255,0.07);padding-top:10px;">'
+                                f'<b style="color:#ef4444;">📉 Trading Bias:</b> Price near bearish OB on <b>{tf_val}</b>. Buy PUT option near resistance zone {ob_zone_display}.'
+                                '</div></div>'
+                            )
+                            st.markdown(sell_card, unsafe_allow_html=True)
                     else:
                         st.markdown('''
                         <div style="background: rgba(255,255,255,0.02); border: 1px dashed rgba(255,255,255,0.1); padding: 35px; border-radius: 12px; text-align: center; color: #64748b; display: flex; flex-direction: column; justify-content: center; align-items: center;">
@@ -5933,9 +5960,8 @@ def page_options_opportunities():
     st.caption("Advanced Options Confluence, OI Walls, and AI Strike Selection.")
     
     engine = OptionsEngine()
-    if not engine.is_available:
-        st.error("⚠️ Options Data Provider (`nsepython`) is not installed or unavailable.")
-        return
+    if not engine.nse_live:
+        st.info("ℹ️ NSE Live OI data unavailable right now. Showing estimated levels using yfinance price data.")
         
     st.markdown("### 📊 Index Options Flow (NIFTY & BANKNIFTY)")
     

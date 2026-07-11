@@ -3976,18 +3976,9 @@ def main():
     for tab in nav_tabs:
         is_active = (query_page == tab["id"])
         active_class = "active" if is_active else ""
-        mobile_nav_items_html += f'''
-            <a href="?tab={tab["id"]}" target="_self" class="mobile-nav-item {active_class}">
-                <span class="icon">{tab["icon"]}</span>
-                <span class="label">{tab["label"]}</span>
-            </a>
-        '''
+        mobile_nav_items_html += f'<a href="?tab={tab["id"]}" target="_self" class="mobile-nav-item {active_class}"><span class="icon">{tab["icon"]}</span><span class="label">{tab["label"]}</span></a>'
         
-    mobile_nav_html = f'''
-        <div class="mobile-nav-container">
-            {mobile_nav_items_html}
-        </div>
-    '''
+    mobile_nav_html = f'<div class="mobile-nav-container">{mobile_nav_items_html}</div>'
     st.markdown(mobile_nav_html, unsafe_allow_html=True)
 
     # ── Pages ─────────────────────────────────────────────────────────

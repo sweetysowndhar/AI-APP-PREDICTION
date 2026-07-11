@@ -420,8 +420,18 @@ st.markdown("""
 
 * { font-family: 'Outfit', sans-serif; box-sizing: border-box; }
 
-/* ── Mobile-Specific Overrides ── */
+/* ── Mobile-Specific Overrides & Navigation Bar ── */
+.mobile-nav-container {
+    display: none;
+}
+
 @media (max-width: 768px) {
+    /* Hide default sidebar arrow on mobile to prevent clutter */
+    button[data-testid="collapsedControl"] {
+        display: none !important;
+    }
+    
+    /* Responsive overrides */
     input, select, textarea { font-size: 16px !important; }
     .main-title { font-size: 1.6rem !important; padding: 0 8px; }
     .sub-title { font-size: 0.8rem !important; }
@@ -439,9 +449,55 @@ st.markdown("""
     .section-head { font-size: 0.95rem; margin: 1.2rem 0 0.7rem 0; }
     .recent-row { gap: 10px; }
     .recent-item { min-width: 70px; padding: 6px 10px; }
+    
+    /* Bottom Navigation Container */
+    .mobile-nav-container {
+        display: flex !important;
+        position: fixed !important;
+        bottom: 0 !important;
+        left: 0 !important;
+        width: 100% !important;
+        height: 65px !important;
+        background: rgba(17, 24, 39, 0.85) !important;
+        backdrop-filter: blur(12px) !important;
+        -webkit-backdrop-filter: blur(12px) !important;
+        border-top: 1px solid rgba(255, 255, 255, 0.08) !important;
+        z-index: 999999 !important;
+        justify-content: space-around !important;
+        align-items: center !important;
+        padding: 5px 10px !important;
+        box-shadow: 0 -4px 20px rgba(0,0,0,0.4) !important;
+    }
+    
+    .mobile-nav-item {
+        display: flex !important;
+        flex-direction: column !important;
+        align-items: center !important;
+        text-decoration: none !important;
+        color: #94a3b8 !important;
+        font-size: 0.7rem !important;
+        font-weight: 500 !important;
+        transition: all 0.2s ease !important;
+        padding: 5px !important;
+        border-radius: 8px !important;
+    }
+    
+    .mobile-nav-item.active {
+        color: #10b981 !important;
+        transform: translateY(-2px) !important;
+    }
+    
+    .mobile-nav-item .icon {
+        font-size: 1.25rem !important;
+        margin-bottom: 2px !important;
+    }
+    
+    /* Content spacing fix for bottom nav */
+    .main .block-container {
+        padding-bottom: 80px !important;
+    }
 }
 
-/* Custom Scrollbars */
 ::-webkit-scrollbar { width: 6px; height: 6px; }
 ::-webkit-scrollbar-track { background: #030712; }
 ::-webkit-scrollbar-thumb { background: #1f2937; border-radius: 4px; }
@@ -3759,13 +3815,45 @@ def main():
     ticker_html += '</div>'
     st.markdown(ticker_html, unsafe_allow_html=True)
 
+    # ── Page Selection Logic with Query Parameters ─────────────────────
+    page_options = [
+        "🏠 Explore", "🔮 AI Prediction", "📈 AI Backtester", "🤖 Algo Engine", 
+        "🎯 Options Engine", "🔍 Stock Screener", "📰 Market News", "🔥 MTF Scanner", 
+        "🏆 Top Movers"
+    ]
+    
+    # Simple mapping for clean URL params
+    param_map = {
+        "explore": "🏠 Explore",
+        "ai-pred": "🔮 AI Prediction",
+        "backtest": "📈 AI Backtester",
+        "algo": "🤖 Algo Engine",
+        "options": "🎯 Options Engine",
+        "screener": "🔍 Stock Screener",
+        "news": "📰 Market News",
+        "scanner": "🔥 MTF Scanner",
+        "movers": "🏆 Top Movers"
+    }
+    rev_param_map = {v: k for k, v in param_map.items()}
+    
+    # Get current page from query parameters
+    query_page = st.query_params.get("tab", "explore")
+    default_page = param_map.get(query_page, "🏠 Explore")
+    
+    # Find index of default page
+    default_idx = 0
+    if default_page in page_options:
+        default_idx = page_options.index(default_page)
+
     # Sidebar
     with st.sidebar:
         st.markdown("### 🏛️ SRV Future Traders")
-        page = st.radio("Navigate", [
-            "🏠 Explore", "🔮 AI Prediction", "📈 AI Backtester", "🤖 Algo Engine", "🎯 Options Engine", "🔍 Stock Screener", "📰 Market News",
-            "🔥 MTF Scanner", "🏆 Top Movers"
-        ], key="page")
+        page = st.radio("Navigate", page_options, index=default_idx, key="page_selection")
+        
+        # Sync to query params
+        current_param = rev_param_map.get(page, "explore")
+        if st.query_params.get("tab") != current_param:
+            st.query_params["tab"] = current_param
         st.markdown("---")
         st.markdown(f'''
             <div style="display: flex; align-items: center; margin-top: 20px; margin-bottom: 10px;">
@@ -3843,6 +3931,33 @@ def main():
         if st.button("🔄 Clear Scan Cache & Refresh", use_container_width=True, help="Force reload scanner data to see latest signals and order block zones"):
             st.cache_data.clear()
             st.rerun()
+
+    # ── Render Mobile Navigation Bar (HTML/CSS Injection) ──────────────
+    nav_tabs = [
+        {"id": "explore", "label": "Explore", "icon": "🏠"},
+        {"id": "ai-pred", "label": "Prediction", "icon": "🔮"},
+        {"id": "options", "label": "Options", "icon": "🎯"},
+        {"id": "scanner", "label": "Scanner", "icon": "🔥"},
+        {"id": "news",    "label": "News",    "icon": "📰"}
+    ]
+    
+    mobile_nav_items_html = ""
+    for tab in nav_tabs:
+        is_active = (query_page == tab["id"])
+        active_class = "active" if is_active else ""
+        mobile_nav_items_html += f'''
+            <a href="?tab={tab["id"]}" target="_self" class="mobile-nav-item {active_class}">
+                <span class="icon">{tab["icon"]}</span>
+                <span class="label">{tab["label"]}</span>
+            </a>
+        '''
+        
+    mobile_nav_html = f'''
+        <div class="mobile-nav-container">
+            {mobile_nav_items_html}
+        </div>
+    '''
+    st.markdown(mobile_nav_html, unsafe_allow_html=True)
 
     # ── Pages ─────────────────────────────────────────────────────────
     if page == "🏠 Explore":

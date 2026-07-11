@@ -3836,8 +3836,39 @@ def main():
     }
     rev_param_map = {v: k for k, v in param_map.items()}
     
-    # Get current page from query parameters
-    query_page = st.query_params.get("tab", "explore")
+    # Safe helper functions to support both old and new Streamlit versions
+    def get_query_tab():
+        try:
+            # Streamlit >= 1.30
+            if hasattr(st, "query_params") and "tab" in st.query_params:
+                return st.query_params["tab"]
+        except Exception:
+            pass
+        try:
+            # Streamlit < 1.30 (Legacy fallback)
+            params = st.experimental_get_query_params()
+            if "tab" in params and len(params["tab"]) > 0:
+                return params["tab"][0]
+        except Exception:
+            pass
+        return "explore"
+
+    def set_query_tab(val):
+        try:
+            # Streamlit >= 1.30
+            if hasattr(st, "query_params"):
+                st.query_params["tab"] = val
+                return
+        except Exception:
+            pass
+        try:
+            # Streamlit < 1.30 (Legacy fallback)
+            st.experimental_set_query_params(tab=[val])
+        except Exception:
+            pass
+
+    # Get current page safely
+    query_page = get_query_tab()
     default_page = param_map.get(query_page, "🏠 Explore")
     
     # Find index of default page
@@ -3850,10 +3881,10 @@ def main():
         st.markdown("### 🏛️ SRV Future Traders")
         page = st.radio("Navigate", page_options, index=default_idx, key="page_selection")
         
-        # Sync to query params
+        # Sync to query params safely
         current_param = rev_param_map.get(page, "explore")
-        if st.query_params.get("tab") != current_param:
-            st.query_params["tab"] = current_param
+        if get_query_tab() != current_param:
+            set_query_tab(current_param)
         st.markdown("---")
         st.markdown(f'''
             <div style="display: flex; align-items: center; margin-top: 20px; margin-bottom: 10px;">
